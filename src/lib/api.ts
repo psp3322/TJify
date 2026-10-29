@@ -18,7 +18,7 @@ export function errorResponse(error: unknown): NextResponse<ApiError> {
   if (error instanceof AuthExpiredError) return jsonError(401, "auth_expired", error.message);
   if (error instanceof NotConfiguredError) return jsonError(503, "not_configured", error.message);
   if (error instanceof UpstreamError) {
-    const status = error.status === 429 ? 429 : error.status === 403 ? 403 : 502;
+    const status = error.status && [403, 404, 429, 503].includes(error.status) ? error.status : 502;
     return jsonError(status, "upstream", error.message);
   }
   console.error(error);

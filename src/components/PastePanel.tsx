@@ -3,17 +3,34 @@
 import { useState } from "react";
 import { libraryStore } from "@/lib/client/library-store";
 import { pasteStore, updatePrefs } from "@/lib/client/stores";
+import { isPlaylistLink, LINK_ERRORS, parsePlaylistLink, type PlaylistLink } from "@/lib/playlist-link";
 import { parsePastedList, type PasteOrder } from "@/lib/text/paste-import";
 
 const PLACEHOLDER = `아이유 - 밤편지
 잔나비 - 주저하는 연인들을 위해
 NewJeans - Hype Boy`;
 
+interface Props {
+  order: PasteOrder;
+  savedText: string;
+  count: number;
+  /** 플레이리스트 링크 하나만 붙여넣었을 때 링크 가져오기로 넘긴다 */
+  onLink(link: PlaylistLink): void;
+}
+
 /** 목록 붙여넣기. 멜론·지니 목록이나 Exportify CSV처럼 계정 연동 없이 쓰는 방법 */
-export function PastePanel({ order, savedText, count }: { order: PasteOrder; savedText: string; count: number }) {
+export function PastePanel({ order, savedText, count, onLink }: Props) {
   const [text, setText] = useState(savedText);
+  const [error, setError] = useState<string | null>(null);
 
   const apply = () => {
+    const link = parsePlaylistLink(text);
+    if (link) {
+      if (isPlaylistLink(link)) onLink(link);
+      else setError(LINK_ERRORS[link.error]);
+      return;
+    }
+    setError(null);
     pasteStore.set(text);
     libraryStore.setStatic("paste", parsePastedList(text, order));
   };
@@ -48,6 +65,7 @@ export function PastePanel({ order, savedText, count }: { order: PasteOrder; sav
           </select>
         </label>
         <span className="flex-1" />
+        {error && <span className="basis-full text-sm text-danger">{error}</span>}
         {count > 0 && <span className="text-sm text-muted">{count}곡</span>}
         <button type="button" onClick={apply} className="rounded-full bg-ink px-4 py-2 text-sm font-semibold text-bg hover:brightness-95">
           번호 찾기

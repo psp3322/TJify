@@ -25,6 +25,11 @@ export function googleConfig(): GoogleConfig | null {
   return clientId && clientSecret ? { clientId, clientSecret } : null;
 }
 
+/** 공개 YouTube 재생목록을 로그인 없이 읽을 때 쓰는 서버 API 키 */
+export function youtubeApiKey(): string | null {
+  return read("YOUTUBE_API_KEY") ?? null;
+}
+
 /** 쿠키 암호화 키. iron-session은 32자 이상을 요구한다 */
 export function sessionPassword(): string {
   const secret = read("SESSION_SECRET");

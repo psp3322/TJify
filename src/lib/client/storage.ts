@@ -22,4 +22,5 @@ export const STORAGE_KEYS = {
   sung: "tjify:sung:v1",
   prefs: "tjify:prefs:v1",
   paste: "tjify:paste:v1",
+  links: "tjify:links:v1",
 } as const;

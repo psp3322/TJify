@@ -12,6 +12,8 @@ import {
   overridesStore,
   pasteStore,
   prefsStore,
+  rememberLink,
+  setLinkTitle,
   sungStore,
   updatePrefs,
   type BrandView,
@@ -19,10 +21,12 @@ import {
 } from "@/lib/client/stores";
 import { useStoredValue } from "@/lib/client/stored-value";
 import { MATCHER_VERSION } from "@/lib/constants";
+import { canonicalLinkUrl, isPlaylistLink, parsePlaylistLink, type PlaylistLink } from "@/lib/playlist-link";
 import { compact } from "@/lib/text/normalize";
 import { parsePastedList } from "@/lib/text/paste-import";
 import { BRANDS, type Brand, type Track } from "@/lib/types";
 import { ConnectBar } from "./ConnectBar";
+import { LinkImport } from "./LinkImport";
 import { MatchProgress } from "./MatchProgress";
 import { PastePanel } from "./PastePanel";
 import { forgetPlaylists, PlaylistPicker, type PlaylistSelection } from "./PlaylistPicker";
@@ -30,12 +34,13 @@ import { RandomPick } from "./RandomPick";
 import { TrackList } from "./TrackList";
 import { TrackSheet } from "./TrackSheet";
 
-type TabKey = "spotify" | "youtube" | "playlists" | "paste";
+type TabKey = "link" | "spotify" | "youtube" | "playlists" | "paste";
 
 const TABS: Array<{ key: TabKey; label: string }> = [
+  { key: "link", label: "링크로 가져오기" },
   { key: "spotify", label: "Spotify 좋아요" },
   { key: "youtube", label: "YouTube 좋아요" },
-  { key: "playlists", label: "플레이리스트" },
+  { key: "playlists", label: "내 플레이리스트" },
   { key: "paste", label: "붙여넣기" },
 ];
 
@@ -70,32 +75,50 @@ export default function TjifyApp() {
   const s = session.data;
   const connected = { spotify: Boolean(s?.spotify.connected), youtube: Boolean(s?.google.connected) };
   const justConnected = params.get("connected");
+  // 링크로 연 목록은 주소(?import=)에 남겨서 새로고침하거나 공유해도 같은 목록이 열리게 한다
+  const importParam = params.get("import");
+  const activeLink = useMemo(() => {
+    const parsed = importParam ? parsePlaylistLink(importParam) : null;
+    return isPlaylistLink(parsed) ? parsed : null;
+  }, [importParam]);
   const tab: TabKey =
-    tabChoice ?? (justConnected === "google" ? "youtube" : connected.spotify ? "spotify" : connected.youtube ? "youtube" : "spotify");
+    tabChoice ??
+    (activeLink
+      ? "link"
+      : justConnected === "google"
+        ? "youtube"
+        : justConnected === "spotify" || connected.spotify
+          ? "spotify"
+          : connected.youtube
+            ? "youtube"
+            : "link");
 
   // 서버에서 켜진 브랜드는 항상 같이 찾고, 화면에는 고른 브랜드만 보여 준다
   const brands = useMemo<Brand[]>(() => (s ? BRANDS.filter((b) => s.brands[b]) : []), [s]);
   const viewBrands = prefs.brandView === "both" ? brands : brands.filter((b) => b === prefs.brandView);
 
-  const libKey =
-    tab === "spotify"
-      ? connected.spotify
-        ? "spotify:liked"
-        : null
-      : tab === "youtube"
-        ? connected.youtube
-          ? "youtube:liked"
-          : null
-        : tab === "playlists"
-          ? playlist
-            ? `${playlist.source}:playlist:${playlist.id}`
-            : null
-          : "paste";
+  let libKey: string | null;
+  if (tab === "link") libKey = activeLink ? `link:${activeLink.source}:${activeLink.id}` : null;
+  else if (tab === "spotify") libKey = connected.spotify ? "spotify:liked" : null;
+  else if (tab === "youtube") libKey = connected.youtube ? "youtube:liked" : null;
+  else if (tab === "playlists") libKey = playlist ? `${playlist.source}:playlist:${playlist.id}` : null;
+  else libKey = "paste";
   const library = useLibrary(libKey);
 
   useEffect(() => {
     if (libKey && libKey !== "paste") void libraryStore.load(libKey);
   }, [libKey]);
+
+  // 링크 기록에 플레이리스트 제목을 채워 둔다
+  useEffect(() => {
+    if (activeLink && library.title) setLinkTitle(activeLink, library.title);
+  }, [activeLink, library.title]);
+
+  const openLink = (link: PlaylistLink) => {
+    rememberLink(link, Date.now());
+    setTabChoice("link");
+    router.replace(`/?import=${encodeURIComponent(canonicalLinkUrl(link))}`, { scroll: false });
+  };
 
   // 저장해 둔 붙여넣기 목록 복원
   useEffect(() => {
@@ -188,9 +211,9 @@ export default function TjifyApp() {
           <button
             type="button"
             onClick={() => {
-              // 주소의 connected 값이 사라져도 지금 보던 탭을 유지한다
+              // 주소의 connected 값이 사라져도 지금 보던 탭과 열어 둔 링크는 유지한다
               setTabChoice(tab);
-              router.replace("/", { scroll: false });
+              router.replace(importParam ? `/?import=${encodeURIComponent(importParam)}` : "/", { scroll: false });
             }}
             className="text-muted hover:text-ink"
             aria-label="알림 닫기"
@@ -203,7 +226,7 @@ export default function TjifyApp() {
       {session.error && <p className="rounded-xl border border-danger/40 bg-danger/10 px-4 py-3 text-sm">서버 상태를 확인하지 못했어요: {session.error}</p>}
       {s && !s.sessionSecretOk && (
         <p className="rounded-xl border border-warn/40 bg-warn/10 px-4 py-3 text-sm">
-          서버에 <code>SESSION_SECRET</code>이 없어서 계정 연결을 쓸 수 없어요. README의 설정 방법을 따라 환경 변수를 넣어 주세요. 붙여넣기는 지금도 됩니다.
+          서버에 <code>SESSION_SECRET</code>이 없어서 계정 연결을 쓸 수 없어요. README의 설정 방법을 따라 환경 변수를 넣어 주세요. 붙여넣기와 YouTube 링크 가져오기는 지금도 됩니다.
         </p>
       )}
 
@@ -229,11 +252,32 @@ export default function TjifyApp() {
       </nav>
 
       <main className="flex flex-col gap-4">
+        {tab === "link" && (
+          <>
+            {!activeLink && !anyConnected && (
+              <p className="text-lg font-bold leading-snug">
+                플레이리스트 링크만 넣으면
+                <br />
+                노래방 번호를 찾아 드려요.
+              </p>
+            )}
+            <LinkImport session={s} onImport={openLink} />
+            {activeLink && (
+              <LinkHeader
+                link={activeLink}
+                title={library.title}
+                onReload={() => libKey && libraryStore.load(libKey, true)}
+                loading={library.status === "loading"}
+                failed={library.status === "error"}
+              />
+            )}
+          </>
+        )}
         {tab === "spotify" && !connected.spotify && (
-          <ConnectPrompt provider="spotify" configured={s?.spotify.configured} loading={!s} anyConnected={anyConnected} onPaste={() => setTabChoice("paste")} />
+          <ConnectPrompt provider="spotify" configured={s?.spotify.configured} loading={!s} anyConnected={anyConnected} onLink={() => setTabChoice("link")} />
         )}
         {tab === "youtube" && !connected.youtube && (
-          <ConnectPrompt provider="google" configured={s?.google.configured} loading={!s} anyConnected={anyConnected} onPaste={() => setTabChoice("paste")} />
+          <ConnectPrompt provider="google" configured={s?.google.configured} loading={!s} anyConnected={anyConnected} onLink={() => setTabChoice("link")} />
         )}
         {tab === "playlists" &&
           (playlist ? (
@@ -247,20 +291,22 @@ export default function TjifyApp() {
             <PlaylistPicker connected={connected} onSelect={setPlaylist} />
           ))}
         {tab === "paste" && (
-          <PastePanel key={pasteText ? "saved" : "empty"} order={prefs.pasteOrder} savedText={pasteText} count={library.tracks.length} />
+          <PastePanel key={pasteText ? "saved" : "empty"} order={prefs.pasteOrder} savedText={pasteText} count={library.tracks.length} onLink={openLink} />
         )}
 
         {showList && (
           <>
-            <Toolbar
-              query={query}
-              onQuery={setQuery}
-              onlyAvailable={prefs.onlyAvailable}
-              musicOnly={prefs.musicOnly}
-              sort={prefs.sort}
-              showMusicFilter={Boolean(libKey?.startsWith("youtube"))}
-              onRandom={pickRandom}
-            />
+            {(library.tracks.length > 0 || library.status === "loading") && (
+              <Toolbar
+                query={query}
+                onQuery={setQuery}
+                onlyAvailable={prefs.onlyAvailable}
+                musicOnly={prefs.musicOnly}
+                sort={prefs.sort}
+                showMusicFilter={Boolean(libKey?.startsWith("youtube"))}
+                onRandom={pickRandom}
+              />
+            )}
             <LibraryStatus status={library.status} loaded={library.tracks.length} total={library.total} error={library.error} onRetry={() => libKey && libraryStore.load(libKey, true)} />
             <MatchProgress done={progress.done} failed={progress.failed} total={progress.total} running={queue.running} error={queue.error} />
             {rows.length === 0 && library.status === "done" && (
@@ -415,18 +461,77 @@ function LibraryStatus({
   return null;
 }
 
+const LINK_SOURCE_LABEL = { spotify: "Spotify", youtube: "YouTube" } as const;
+
+/** 링크로 연 플레이리스트의 제목줄 */
+function LinkHeader({
+  link,
+  title,
+  loading,
+  failed,
+  onReload,
+}: {
+  link: PlaylistLink;
+  title?: string;
+  loading: boolean;
+  failed: boolean;
+  onReload(): void;
+}) {
+  const [copied, setCopied] = useState(false);
+  const share = async () => {
+    try {
+      await navigator.clipboard.writeText(`${window.location.origin}/?import=${encodeURIComponent(canonicalLinkUrl(link))}`);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      // 클립보드 권한이 없으면 조용히 넘어간다
+    }
+  };
+  return (
+    <div className="space-y-2">
+      <div className="min-w-0">
+        <p className="text-xs text-muted">{LINK_SOURCE_LABEL[link.source]} 플레이리스트</p>
+        <h2 className="truncate text-lg font-semibold">{title ?? (loading ? "불러오는 중…" : failed ? "불러오지 못했어요" : "제목 없음")}</h2>
+      </div>
+      <div className="flex flex-wrap gap-2">
+        <a
+          href={canonicalLinkUrl(link)}
+          target="_blank"
+          rel="noreferrer"
+          className="rounded-full border border-line px-3 py-1 text-sm text-muted hover:text-ink"
+        >
+          원본 열기 ↗
+        </a>
+        {link.source === "youtube" && (
+          <button type="button" onClick={share} className="rounded-full border border-line px-3 py-1 text-sm text-muted hover:text-ink">
+            {copied ? "주소 복사됨" : "이 목록 공유"}
+          </button>
+        )}
+        <button
+          type="button"
+          onClick={onReload}
+          disabled={loading}
+          className="rounded-full border border-line px-3 py-1 text-sm text-muted hover:text-ink disabled:opacity-50"
+        >
+          새로 불러오기
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function ConnectPrompt({
   provider,
   configured,
   loading,
   anyConnected,
-  onPaste,
+  onLink,
 }: {
   provider: "spotify" | "google";
   configured?: boolean;
   loading: boolean;
   anyConnected: boolean;
-  onPaste(): void;
+  onLink(): void;
 }) {
   const isSpotify = provider === "spotify";
   const name = isSpotify ? "Spotify" : "YouTube";
@@ -453,8 +558,8 @@ function ConnectPrompt({
         ) : (
           <p className="text-sm text-warn">서버에 {name} 연동 설정이 아직 없어요 (README 참고).</p>
         )}
-        <button type="button" onClick={onPaste} className="text-sm text-muted underline-offset-2 hover:text-ink hover:underline">
-          연결 없이 목록 붙여넣기
+        <button type="button" onClick={onLink} className="text-sm text-muted underline-offset-2 hover:text-ink hover:underline">
+          연결 없이 플레이리스트 링크로 가져오기
         </button>
       </div>
       <p className="mt-5 text-xs text-muted/80">읽기 권한만 요청하고, 로그인 정보는 이 브라우저의 암호화된 쿠키에만 남아요.</p>

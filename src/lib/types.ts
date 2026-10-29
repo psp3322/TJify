@@ -68,6 +68,8 @@ export interface TrackPage {
   /** 다음 페이지 커서. 없으면 마지막 페이지 */
   next: string | null;
   total?: number;
+  /** 플레이리스트 제목 (링크로 가져올 때 첫 페이지에만) */
+  title?: string;
 }
 
 export interface ProviderStatus {
@@ -82,6 +84,8 @@ export interface SessionStatus {
   spotify: ProviderStatus;
   google: ProviderStatus;
   brands: Record<Brand, boolean>;
+  /** 서버에 YOUTUBE_API_KEY가 있어 공개 재생목록을 로그인 없이 읽을 수 있는지 */
+  youtubeApiKey: boolean;
 }
 
 export interface PlaylistSummary {

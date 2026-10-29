@@ -3,12 +3,29 @@
 Spotify와 YouTube에서 좋아요 누른 노래를 불러와 TJ·금영 노래방 번호를 찾아 주는 웹앱입니다.
 노래방 갈 때마다 같은 노래만 부르지 않으려고 만들었습니다.
 
+- **플레이리스트 링크 붙여넣기**: YouTube·YouTube Music 공개 재생목록은 로그인 없이 가져옵니다
 - Spotify **좋아요 표시한 곡**과 플레이리스트
 - YouTube·YouTube Music에서 **좋아요 누른 영상**과 재생목록
 - 계정 연결 없이 **목록 붙여넣기** ("가수 - 제목" 한 줄씩, Exportify CSV)
 - TJ·금영 번호 자동 매칭. 확실하지 않은 결과는 `?`로 표시하고, 후보 중에서 고르거나 직접 검색해 바로잡을 수 있습니다
 - 부른 곡 기록, 최근 2주 안에 부른 곡을 뺀 랜덤 추천("뭐 부르지?")
 - 휴대폰 홈 화면에 앱처럼 추가(PWA)
+
+## 링크로 가져오기
+
+"링크로 가져오기" 탭에 플레이리스트 주소를 붙여넣으면 곡을 불러와 번호를 찾습니다. 붙여넣기 탭에 링크를 넣어도 알아서 넘어갑니다.
+
+| 링크 | 로그인 없이 | 조건 |
+| --- | --- | --- |
+| `youtube.com/playlist?list=…`, `music.youtube.com/playlist?list=…`, `youtu.be/…?list=…` | 됨 | 서버에 `YOUTUBE_API_KEY` 필요. 공개·일부 공개 재생목록만 |
+| 비공개 YouTube 재생목록 | 안 됨 | YouTube를 연결한 본인 계정의 재생목록이면 됨 |
+| `open.spotify.com/playlist/…` | 안 됨 | Spotify를 연결한 계정이 만들었거나 공동 작업 중인 플레이리스트만 |
+
+- 가져온 목록은 주소가 `/?import=플레이리스트주소` 형태로 바뀝니다. 새로고침해도 그대로고, YouTube 목록은 이 주소를 친구에게 보내면 바로 같은 화면이 열립니다.
+- Spotify는 2026년 2월부터 개발 모드 앱이 다른 사람의 플레이리스트(공개라도)와 Spotify가 만든 플레이리스트를 읽지 못하게 막았습니다. 공식 API로는 우회할 방법이 없습니다.
+- YouTube Music의 자동 믹스(`RDCLAK…`)는 YouTube API에서 읽을 수 없습니다.
+
+`YOUTUBE_API_KEY` 만드는 법: [Google Cloud 콘솔](https://console.cloud.google.com)에서 YouTube Data API v3를 사용 설정한 프로젝트로 들어가 **API 및 서비스 → 사용자 인증 정보 → 사용자 인증 정보 만들기 → API 키**를 누릅니다. 만든 키는 **API 제한사항**에서 YouTube Data API v3만 쓰도록 묶어 두세요. 재생목록 50곡마다 하루 할당량(기본 10,000)을 1씩 씁니다. 같은 링크는 서버가 10분 동안 캐시합니다.
 
 ## 먼저 알아 둘 제약
 
@@ -79,7 +96,7 @@ YouTube Music에서 좋아요한 곡은 YouTube의 "좋아요 표시한 동영�
 ## Vercel에 배포하기
 
 1. [Vercel](https://vercel.com)에서 **Add New → Project**를 누르고 이 GitHub 저장소를 가져옵니다. 프레임워크는 Next.js로 자동 인식됩니다.
-2. Environment Variables에 `SESSION_SECRET`, `APP_URL`(예: `https://tjify.vercel.app`), `SPOTIFY_CLIENT_ID`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`을 넣고 배포합니다.
+2. Environment Variables에 `SESSION_SECRET`, `APP_URL`(예: `https://tjify.vercel.app`), `SPOTIFY_CLIENT_ID`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `YOUTUBE_API_KEY`를 넣고 배포합니다. 링크 가져오기만 쓸 거라면 `SESSION_SECRET`과 `YOUTUBE_API_KEY`만 있어도 됩니다.
 3. 배포 주소 기준의 콜백 URI 두 개를 Spotify 대시보드와 Google 콘솔에 추가합니다. `APP_URL`과 글자 하나까지 같아야 합니다.
 4. 휴대폰에서 주소를 열고 홈 화면에 추가하면 앱처럼 쓸 수 있습니다. iPhone은 Safari 공유 버튼 → 홈 화면에 추가, Android는 Chrome 메뉴 → 앱 설치입니다.
 
@@ -117,6 +134,7 @@ src/
   lib/karaoke/        TJ 검색·파서, Manana 클라이언트, 매칭 점수, 캐시
   lib/text/           제목 정리, 가수 별칭표, 유튜브 제목 파싱, 붙여넣기 파싱
   lib/sources/        Spotify·YouTube API 호출
+  lib/playlist-link.ts 붙여넣은 플레이리스트 주소 해석
   lib/auth/           OAuth(PKCE), 암호화 쿠키 세션
   lib/client/         브라우저 쪽 저장소와 번호 찾기 대기열
 ```

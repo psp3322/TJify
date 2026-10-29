@@ -135,6 +135,16 @@ export async function fetchPlaylists(token: string): Promise<PlaylistSummary[]> 
   return out;
 }
 
+/** 플레이리스트 제목. 못 가져와도 곡 목록은 보여 줄 수 있으니 실패하면 undefined */
+export async function fetchPlaylistName(token: string, playlistId: string): Promise<string | undefined> {
+  try {
+    const p = await spotifyGet<{ name?: string }>(token, `/playlists/${encodeURIComponent(playlistId)}`, { fields: "name" });
+    return p.name;
+  } catch {
+    return undefined;
+  }
+}
+
 export async function fetchPlaylistTracks(token: string, playlistId: string, cursor: string | null): Promise<TrackPage> {
   const offset = offsetFrom(cursor);
   const params = { limit: String(PAGE), offset: String(offset), additional_types: "track" };

@@ -86,18 +86,36 @@ export function normalizePlaylistItem(item: PlaylistItemResource): Track | null 
   return toTrack(videoId, s.title, s.videoOwnerChannelTitle, s.thumbnails);
 }
 
-async function youtubeGet<T>(token: string, path: string, params: Record<string, string>): Promise<T> {
+/** 로그인한 사용자의 access token, 또는 공개 데이터만 읽는 서버 API 키 */
+export type YouTubeAuth = { token: string } | { key: string };
+
+interface GoogleErrorBody {
+  error?: { message?: string; errors?: Array<{ reason?: string }>; details?: Array<{ reason?: string }> };
+}
+
+async function youtubeGet<T>(auth: YouTubeAuth | string, path: string, params: Record<string, string>, fetchImpl: typeof fetch = fetch): Promise<T> {
+  const a: YouTubeAuth = typeof auth === "string" ? { token: auth } : auth;
   const url = new URL(API + path);
   for (const [k, v] of Object.entries(params)) if (v) url.searchParams.set(k, v);
-  const res = await fetch(url, {
-    headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
+  if ("key" in a) url.searchParams.set("key", a.key);
+  const res = await fetchImpl(url, {
+    headers: { ...("token" in a ? { Authorization: `Bearer ${a.token}` } : {}), Accept: "application/json" },
     signal: AbortSignal.timeout(15_000),
   });
-  if (res.status === 401) throw new AuthExpiredError();
+  if (res.status === 401 && "token" in a) throw new AuthExpiredError();
   if (!res.ok) {
-    const body = (await res.json().catch(() => null)) as { error?: { message?: string; errors?: Array<{ reason?: string }> } } | null;
+    const body = (await res.json().catch(() => null)) as GoogleErrorBody | null;
     const reason = body?.error?.errors?.[0]?.reason;
     if (reason === "quotaExceeded") throw new UpstreamError("YouTube API 일일 할당량을 다 썼습니다. 내일 다시 시도하세요.", 429);
+    if (reason === "playlistNotFound") {
+      throw new UpstreamError("재생목록을 찾을 수 없어요. 비공개 재생목록이나 YouTube Music 자동 믹스는 가져올 수 없어요.", 404);
+    }
+    if (reason === "playlistItemsNotAccessible" || reason === "forbidden") {
+      throw new UpstreamError("비공개 재생목록이라 볼 수 없어요. 재생목록을 '공개'나 '일부 공개'로 바꾸면 가져올 수 있어요.", 403);
+    }
+    if (body?.error?.details?.some((d) => d.reason === "API_KEY_INVALID")) {
+      throw new UpstreamError("서버에 설정된 YOUTUBE_API_KEY가 올바르지 않아요.", 503);
+    }
     throw new UpstreamError(`YouTube API 오류: ${body?.error?.message ?? `HTTP ${res.status}`}`, res.status);
   }
   return (await res.json()) as T;
@@ -151,16 +169,31 @@ export async function fetchPlaylists(token: string): Promise<PlaylistSummary[]> 
   return out;
 }
 
-export async function fetchPlaylistItems(token: string, playlistId: string, cursor: string | null): Promise<TrackPage> {
-  const res = await youtubeGet<ListResponse<PlaylistItemResource>>(token, "/playlistItems", {
-    part: "snippet",
-    playlistId,
-    maxResults: "50",
-    pageToken: cursor ?? "",
-  });
+export async function fetchPlaylistItems(
+  auth: YouTubeAuth | string,
+  playlistId: string,
+  cursor: string | null,
+  fetchImpl?: typeof fetch,
+): Promise<TrackPage> {
+  const res = await youtubeGet<ListResponse<PlaylistItemResource>>(
+    auth,
+    "/playlistItems",
+    { part: "snippet", playlistId, maxResults: "50", pageToken: cursor ?? "" },
+    fetchImpl,
+  );
   return {
     tracks: (res.items ?? []).map(normalizePlaylistItem).filter((t): t is Track => t !== null),
     next: res.nextPageToken ?? null,
     total: res.pageInfo?.totalResults,
   };
+}
+
+/** 재생목록 제목. 못 가져와도 곡 목록은 보여 줄 수 있으니 실패하면 undefined */
+export async function fetchPlaylistTitle(auth: YouTubeAuth | string, playlistId: string, fetchImpl?: typeof fetch): Promise<string | undefined> {
+  try {
+    const res = await youtubeGet<ListResponse<PlaylistResource>>(auth, "/playlists", { part: "snippet", id: playlistId, maxResults: "1" }, fetchImpl);
+    return res.items?.[0]?.snippet?.title;
+  } catch {
+    return undefined;
+  }
 }
