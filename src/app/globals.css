@@ -1,0 +1,70 @@
+@import "tailwindcss";
+
+@theme {
+  --color-bg: #0b0b12;
+  --color-surface: #14141d;
+  --color-surface-2: #1d1d2a;
+  --color-line: #2b2b3d;
+  --color-ink: #ececf3;
+  --color-muted: #9b9bb4;
+  --color-tj: #62d4ff;
+  --color-ky: #ffc65e;
+  --color-accent: #ff5fa8;
+  --color-ok: #4ade80;
+  --color-warn: #fbbf24;
+  --color-danger: #f87171;
+  --color-spotify: #1ed760;
+  --color-youtube: #ff4646;
+  --font-sans:
+    "Pretendard Variable", Pretendard, -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Noto Sans KR",
+    "Malgun Gothic", system-ui, sans-serif;
+}
+
+:root {
+  color-scheme: dark;
+}
+
+body {
+  background: var(--color-bg);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  -webkit-tap-highlight-color: transparent;
+  /* 한글이 낱글자 단위로 줄바꿈되지 않게 어절 단위로 끊는다 */
+  word-break: keep-all;
+  overflow-wrap: anywhere;
+}
+
+button {
+  white-space: nowrap;
+}
+
+.num {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+}
+
+dialog::backdrop {
+  background: rgb(0 0 0 / 0.6);
+  backdrop-filter: blur(2px);
+}
+
+dialog[open] {
+  animation: sheet-in 160ms ease-out;
+}
+
+@keyframes sheet-in {
+  from {
+    transform: translateY(16px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  dialog[open] {
+    animation: none;
+  }
+}
