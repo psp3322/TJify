@@ -7,12 +7,16 @@ interface Props {
   onDisconnect(provider: "spotify" | "google"): void;
 }
 
-/** 상단의 계정 연결 상태 */
+/** 상단의 계정 연결 상태. 서버에 설정된 서비스만 보여 준다 */
 export function ConnectBar({ session, onDisconnect }: Props) {
   return (
     <div className="flex flex-wrap gap-2">
-      <ConnectChip provider="spotify" label="Spotify" dot="bg-spotify" status={session?.spotify} onDisconnect={onDisconnect} />
-      <ConnectChip provider="google" label="YouTube" dot="bg-youtube" status={session?.google} onDisconnect={onDisconnect} />
+      {session?.spotify.configured && (
+        <ConnectChip provider="spotify" label="Spotify" dot="bg-spotify" status={session.spotify} onDisconnect={onDisconnect} />
+      )}
+      {session?.google.configured && (
+        <ConnectChip provider="google" label="YouTube" dot="bg-youtube" status={session.google} onDisconnect={onDisconnect} />
+      )}
     </div>
   );
 }

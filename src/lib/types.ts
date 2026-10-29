@@ -15,6 +15,8 @@ export interface Track {
   rawTitle?: string;
   /** 유튜브: 음악 카테고리이거나 "- Topic" 채널이면 true */
   isMusic?: boolean;
+  /** 유튜브 조회수 */
+  views?: number;
 }
 
 export type Brand = "tj" | "ky";
@@ -86,6 +88,8 @@ export interface SessionStatus {
   brands: Record<Brand, boolean>;
   /** 서버에 YOUTUBE_API_KEY가 있어 공개 재생목록을 로그인 없이 읽을 수 있는지 */
   youtubeApiKey: boolean;
+  /** 서버에 ANTHROPIC_API_KEY가 있어 난이도·대중성 추정을 쓸 수 있는지 */
+  ai: boolean;
 }
 
 export interface PlaylistSummary {

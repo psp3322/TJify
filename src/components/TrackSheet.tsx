@@ -4,10 +4,12 @@ import { useEffect, useRef, useState } from "react";
 import { apiGet } from "@/lib/client/api";
 import { matchQueue } from "@/lib/client/match-queue";
 import { resolveNumber, trackKey, type MatchStore, type OverrideStore } from "@/lib/client/match-store";
+import type { SongMeta } from "@/lib/client/song-meta";
 import { clearSung, markSung, setOverride } from "@/lib/client/stores";
 import { stripDecorations } from "@/lib/text/normalize";
 import { BRAND_LABEL, type Brand, type KaraokeSong, type Track } from "@/lib/types";
 import { NumberBadge } from "./NumberBadge";
+import { SongInfoSection } from "./SongInfoSection";
 
 interface Props {
   track: Track;
@@ -15,13 +17,16 @@ interface Props {
   store: MatchStore;
   overrides: OverrideStore;
   sung: Record<string, number[]>;
+  meta?: SongMeta;
+  aiEnabled: boolean;
+  aiPending: boolean;
   onClose(): void;
 }
 
 const SOURCE_LABEL = { spotify: "Spotify에서 열기", youtube: "YouTube에서 열기", paste: "" } as const;
 
 /** 곡 상세: 번호 후보 고르기, 직접 검색, 불렀어요 기록 */
-export function TrackSheet({ track, brands, store, overrides, sung, onClose }: Props) {
+export function TrackSheet({ track, brands, store, overrides, sung, meta, aiEnabled, aiPending, onClose }: Props) {
   const dialog = useRef<HTMLDialogElement>(null);
   const key = trackKey(track);
   const history = sung[key] ?? [];
@@ -58,6 +63,8 @@ export function TrackSheet({ track, brands, store, overrides, sung, onClose }: P
         {brands.map((brand) => (
           <BrandSection key={brand} brand={brand} track={track} trackKeyValue={key} store={store} overrides={overrides} />
         ))}
+
+        {meta && <SongInfoSection trackKeyValue={key} meta={meta} aiEnabled={aiEnabled} aiPending={aiPending} />}
 
         <div className="flex flex-wrap items-center gap-2 border-t border-line pt-4">
           <button

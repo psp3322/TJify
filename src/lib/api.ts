@@ -3,7 +3,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { AuthExpiredError, NotConfiguredError } from "@/lib/auth/errors";
 import { refreshSession } from "@/lib/auth/oauth-providers";
 import { clearSession, readSession, writeSession, type Provider, type ProviderSession } from "@/lib/auth/session";
-import { UpstreamError } from "@/lib/http";
+import { describeError, UpstreamError } from "@/lib/http";
 
 export interface ApiError {
   error: "not_connected" | "auth_expired" | "not_configured" | "upstream" | "bad_request" | "rate_limited" | "internal";
@@ -20,6 +20,10 @@ export function errorResponse(error: unknown): NextResponse<ApiError> {
   if (error instanceof UpstreamError) {
     const status = error.status && [403, 404, 429, 503].includes(error.status) ? error.status : 502;
     return jsonError(status, "upstream", error.message);
+  }
+  // 외부 사이트에 아예 연결하지 못한 경우는 서버 버그가 아니라 바깥 문제로 알린다
+  if (error instanceof Error && (error.name === "TimeoutError" || /fetch failed|econn|enotfound|socket/i.test(error.message))) {
+    return jsonError(502, "upstream", describeError(error, "외부 사이트"));
   }
   console.error(error);
   return jsonError(500, "internal", "서버에서 문제가 생겼습니다.");

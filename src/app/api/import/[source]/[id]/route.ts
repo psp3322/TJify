@@ -31,7 +31,7 @@ const YOUTUBE_NO_KEY =
 
 async function youtubePage(auth: youtube.YouTubeAuth | string, id: string, cursor: string | null): Promise<TrackPage> {
   const [page, title] = await Promise.all([
-    youtube.fetchPlaylistItems(auth, id, cursor),
+    youtube.fetchPlaylistItems(auth, id, cursor).then((p) => youtube.withViewCounts(auth, p)),
     cursor ? Promise.resolve(undefined) : youtube.fetchPlaylistTitle(auth, id),
   ]);
   return title ? { ...page, title } : page;

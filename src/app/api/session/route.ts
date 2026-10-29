@@ -1,6 +1,7 @@
 import { connection, NextResponse, type NextRequest } from "next/server";
 import { readSession, type Provider } from "@/lib/auth/session";
 import { googleConfig, sessionPassword, spotifyConfig, youtubeApiKey } from "@/lib/env";
+import { isInsightConfigured } from "@/lib/insights/claude";
 import { isBrandEnabled } from "@/lib/karaoke/providers";
 import type { ProviderStatus, SessionStatus } from "@/lib/types";
 
@@ -27,6 +28,7 @@ export async function GET(request: NextRequest) {
     google: await status("google", Boolean(googleConfig())),
     brands: { tj: isBrandEnabled("tj"), ky: isBrandEnabled("ky") },
     youtubeApiKey: Boolean(youtubeApiKey()),
+    ai: isInsightConfigured(),
   };
   return NextResponse.json(body, { headers: { "Cache-Control": "no-store" } });
 }

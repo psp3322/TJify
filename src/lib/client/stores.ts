@@ -8,11 +8,13 @@ import { STORAGE_KEYS } from "./storage";
 import { createStoredValue } from "./stored-value";
 
 export type BrandView = "both" | Brand;
-export type SortMode = "default" | "title" | "artist";
+export type SortMode = "default" | "title" | "artist" | "easy" | "hard" | "popular";
 
 export interface Prefs {
   brandView: BrandView;
   onlyAvailable: boolean;
+  /** 다른 사람들도 따라 부를 수 있는 곡만 */
+  onlySingAlong: boolean;
   musicOnly: boolean;
   sort: SortMode;
   pasteOrder: PasteOrder;
@@ -21,12 +23,25 @@ export interface Prefs {
 export const DEFAULT_PREFS: Prefs = {
   brandView: "both",
   onlyAvailable: false,
+  onlySingAlong: false,
   musicOnly: true,
   sort: "default",
   pasteOrder: "artist-title",
 };
 
 export const prefsStore = createStoredValue<Prefs>(STORAGE_KEYS.prefs, DEFAULT_PREFS);
+
+/** 직접 불러 보고 매긴 난이도 (곡 키 → 1~5). Claude 추정보다 앞선다 */
+export const myDifficultyStore = createStoredValue<Record<string, number>>(STORAGE_KEYS.myDifficulty, {});
+
+export function setMyDifficulty(key: string, level: number | undefined) {
+  myDifficultyStore.set((prev) => {
+    const next = { ...prev };
+    if (level === undefined) delete next[key];
+    else next[key] = level;
+    return next;
+  });
+}
 export const overridesStore = createStoredValue<OverrideStore>(STORAGE_KEYS.overrides, {});
 /** 곡 키 → 부른 시각 목록 (epoch ms, 최근 20개) */
 export const sungStore = createStoredValue<Record<string, number[]>>(STORAGE_KEYS.sung, {});

@@ -30,13 +30,21 @@ export function LinkImport({ session, onImport }: Props) {
     onImport(parsed);
   };
 
+  // 방문자에게 보이는 안내라서 환경 변수 이름 같은 운영자용 말은 쓰지 않는다
   const youtubeNote = !session
     ? null
     : session.youtubeApiKey
       ? "YouTube·YouTube Music 공개 재생목록은 로그인 없이 가져와요."
       : session.google.connected
         ? "YouTube 재생목록은 연결한 계정으로 가져와요."
-        : "YouTube 재생목록을 가져오려면 YouTube를 연결하거나, 서버에 YOUTUBE_API_KEY를 설정해 주세요.";
+        : session.google.configured
+          ? "YouTube 재생목록을 가져오려면 위에서 YouTube를 연결해 주세요."
+          : "이 사이트는 아직 YouTube 링크를 읽을 준비가 안 됐어요. 곡 목록은 붙여넣기로 넣어 주세요.";
+  const spotifyNote = !session
+    ? null
+    : session.spotify.configured
+      ? "Spotify 플레이리스트는 Spotify를 연결한 계정이 만들었거나 공동 작업 중인 것만 가져올 수 있어요 (Spotify 정책)."
+      : "Spotify 플레이리스트는 Spotify 정책상 로그인 없이 읽을 수 없어요. 곡 목록을 붙여넣기로 넣어 주세요.";
 
   return (
     <div className="space-y-3 rounded-2xl border border-line bg-surface p-4">
@@ -65,7 +73,7 @@ export function LinkImport({ session, onImport }: Props) {
 
       <ul className="space-y-1 text-xs text-muted">
         {youtubeNote && <li>{youtubeNote}</li>}
-        <li>Spotify 플레이리스트는 Spotify를 연결한 계정이 만들었거나 공동 작업 중인 것만 가져올 수 있어요 (Spotify 정책).</li>
+        {spotifyNote && <li>{spotifyNote}</li>}
       </ul>
 
       {history.length > 0 && (
