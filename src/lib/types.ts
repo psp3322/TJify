@@ -15,6 +15,8 @@ export interface Track {
   rawTitle?: string;
   /** 유튜브: 음악 카테고리이거나 "- Topic" 채널이면 true */
   isMusic?: boolean;
+  /** 유튜브 조회수 */
+  views?: number;
 }
 
 export type Brand = "tj" | "ky";
@@ -73,19 +75,20 @@ export interface TrackPage {
 }
 
 export interface ProviderStatus {
-  /** 서버에 클라이언트 ID 등 환경 변수가 있는지 */
+  /** 이 사이트에 그 서비스의 클라이언트 ID가 들어 있는지 (빌드할 때 정해진다) */
   configured: boolean;
   connected: boolean;
   displayName?: string;
 }
 
-export interface SessionStatus {
-  sessionSecretOk: boolean;
+/** 지금 이 브라우저에서 쓸 수 있는 기능 */
+export interface SiteStatus {
   spotify: ProviderStatus;
   google: ProviderStatus;
-  brands: Record<Brand, boolean>;
-  /** 서버에 YOUTUBE_API_KEY가 있어 공개 재생목록을 로그인 없이 읽을 수 있는지 */
+  /** 공개 YouTube 재생목록을 읽을 API 키가 있는지 (사이트에 넣어 둔 키나 설정에 넣은 내 키) */
   youtubeApiKey: boolean;
+  /** 설정에 Anthropic API 키를 넣어 난이도·대중성 추정을 쓸 수 있는지 */
+  ai: boolean;
 }
 
 export interface PlaylistSummary {

@@ -2,13 +2,18 @@
 
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
-import { useSession } from "@/hooks/useSession";
+import { useSiteStatus } from "@/hooks/useSiteStatus";
 import { loginErrorMessage } from "@/lib/auth/errors";
-import { apiPost } from "@/lib/client/api";
+import { completeLogin, disconnect as disconnectAccount, readOAuthResponse, startLogin, type LoginOutcome } from "@/lib/client/auth";
 import { libraryStore, useLibrary } from "@/lib/client/library-store";
+import { useTjChart } from "@/lib/client/chart-store";
+import { insightQueue, useInsights } from "@/lib/client/insight-queue";
 import { matchQueue, useMatchQueue } from "@/lib/client/match-queue";
 import { hasNumber, resolveNumber, trackKey, type MatchStore, type OverrideStore } from "@/lib/client/match-store";
+import { anthropicApiKey, settingsStore } from "@/lib/client/settings";
+import { songMeta, type SongMeta } from "@/lib/client/song-meta";
 import {
+  myDifficultyStore,
   overridesStore,
   pasteStore,
   prefsStore,
@@ -20,17 +25,21 @@ import {
   type SortMode,
 } from "@/lib/client/stores";
 import { useStoredValue } from "@/lib/client/stored-value";
+import { siteUrl } from "@/lib/config";
 import { MATCHER_VERSION } from "@/lib/constants";
 import { canonicalLinkUrl, isPlaylistLink, parsePlaylistLink, type PlaylistLink } from "@/lib/playlist-link";
 import { compact } from "@/lib/text/normalize";
 import { parsePastedList } from "@/lib/text/paste-import";
 import { BRANDS, type Brand, type Track } from "@/lib/types";
+import { SITE_TAGLINE } from "@/lib/site";
+import { AboutSection } from "./AboutSection";
 import { ConnectBar } from "./ConnectBar";
 import { LinkImport } from "./LinkImport";
 import { MatchProgress } from "./MatchProgress";
 import { PastePanel } from "./PastePanel";
 import { forgetPlaylists, PlaylistPicker, type PlaylistSelection } from "./PlaylistPicker";
 import { RandomPick } from "./RandomPick";
+import { SettingsPanel } from "./SettingsPanel";
 import { TrackList } from "./TrackList";
 import { TrackSheet } from "./TrackSheet";
 
@@ -45,11 +54,38 @@ const TABS: Array<{ key: TabKey; label: string }> = [
 ];
 
 const RECENT_MS = 14 * 24 * 60 * 60 * 1000;
+/** 번호는 TJ·금영 둘 다 찾고, 화면에는 고른 브랜드만 보여 준다 */
+const ALL_BRANDS: Brand[] = [...BRANDS];
 
-function sortTracks(tracks: Track[], mode: SortMode): Track[] {
-  if (mode === "default") return tracks;
+let oauthReturn: Promise<LoginOutcome | null> | undefined;
+
+/** 로그인 화면에서 돌아왔으면 한 번만 마무리한다 (개발 모드에서 effect가 두 번 돌아도 같은 결과를 쓴다) */
+function finishOAuthReturn(): Promise<LoginOutcome | null> {
+  if (!oauthReturn) {
+    const response = readOAuthResponse(window.location.search, window.location.hash);
+    oauthReturn = response ? completeLogin(response) : Promise.resolve(null);
+  }
+  return oauthReturn;
+}
+
+function sortTracks(tracks: Track[], mode: "title" | "artist"): Track[] {
   const pick = mode === "title" ? (t: Track) => t.title : (t: Track) => t.artists[0] ?? "";
   return [...tracks].sort((a, b) => pick(a).localeCompare(pick(b), "ko"));
+}
+
+/** 난이도·인기 정렬. 정보가 없는 곡은 뒤로 보내고, 같으면 원래 순서를 지킨다 */
+function sortByMeta(tracks: Track[], mode: SortMode, meta: Map<string, SongMeta>): Track[] {
+  if (mode !== "easy" && mode !== "hard" && mode !== "popular") return tracks;
+  const value = (t: Track) => {
+    const m = meta.get(trackKey(t));
+    if (mode === "popular") return m && m.popularity >= 0 ? -m.popularity : Infinity;
+    if (!m || m.difficulty === null) return Infinity;
+    return mode === "easy" ? m.difficulty : -m.difficulty;
+  };
+  return tracks
+    .map((t, i) => ({ t, i, v: value(t) }))
+    .sort((a, b) => a.v - b.v || a.i - b.i)
+    .map((x) => x.t);
 }
 
 function availableIn(key: string, brands: Brand[], store: MatchStore, overrides: OverrideStore) {
@@ -57,7 +93,8 @@ function availableIn(key: string, brands: Brand[], store: MatchStore, overrides:
 }
 
 export default function TjifyApp() {
-  const session = useSession();
+  const s = useSiteStatus();
+  const settings = useStoredValue(settingsStore);
   const prefs = useStoredValue(prefsStore);
   const overrides = useStoredValue(overridesStore);
   const sung = useStoredValue(sungStore);
@@ -72,8 +109,20 @@ export default function TjifyApp() {
   const [selected, setSelected] = useState<Track | null>(null);
   const [random, setRandom] = useState<{ track: Track | null; pool: number } | null>(null);
 
-  const s = session.data;
+  const insights = useInsights();
+  const chart = useTjChart();
+  const myDifficulty = useStoredValue(myDifficultyStore);
+
   const connected = { spotify: Boolean(s?.spotify.connected), youtube: Boolean(s?.google.connected) };
+  const configured = { spotify: Boolean(s?.spotify.configured), youtube: Boolean(s?.google.configured) };
+  const aiEnabled = Boolean(s?.ai);
+  // 연결 설정이 없는 기능은 탭 자체를 숨겨서 링크·붙여넣기만 있는 깔끔한 사이트로 보이게 한다
+  const tabs = TABS.filter(
+    (t) =>
+      (t.key !== "spotify" || configured.spotify) &&
+      (t.key !== "youtube" || configured.youtube) &&
+      (t.key !== "playlists" || configured.spotify || configured.youtube),
+  );
   const justConnected = params.get("connected");
   // 링크로 연 목록은 주소(?import=)에 남겨서 새로고침하거나 공유해도 같은 목록이 열리게 한다
   const importParam = params.get("import");
@@ -93,8 +142,7 @@ export default function TjifyApp() {
             ? "youtube"
             : "link");
 
-  // 서버에서 켜진 브랜드는 항상 같이 찾고, 화면에는 고른 브랜드만 보여 준다
-  const brands = useMemo<Brand[]>(() => (s ? BRANDS.filter((b) => s.brands[b]) : []), [s]);
+  const brands = ALL_BRANDS;
   const viewBrands = prefs.brandView === "both" ? brands : brands.filter((b) => b === prefs.brandView);
 
   let libKey: string | null;
@@ -108,6 +156,19 @@ export default function TjifyApp() {
   useEffect(() => {
     if (libKey && libKey !== "paste") void libraryStore.load(libKey);
   }, [libKey]);
+
+  // 로그인 화면에서 돌아왔으면 토큰을 저장하고, 주소에 남은 OAuth 값은 결과 알림으로 바꾼다
+  useEffect(() => {
+    let alive = true;
+    void finishOAuthReturn().then((outcome) => {
+      if (!alive || !outcome) return;
+      const query = outcome.ok ? `connected=${outcome.provider}` : `error=${outcome.error}${outcome.provider ? `&provider=${outcome.provider}` : ""}`;
+      router.replace(`/?${query}`, { scroll: false });
+    });
+    return () => {
+      alive = false;
+    };
+  }, [router]);
 
   // 링크 기록에 플레이리스트 제목을 채워 둔다
   useEffect(() => {
@@ -130,21 +191,52 @@ export default function TjifyApp() {
   const baseTracks = useMemo(() => {
     let list = library.tracks;
     if (libKey?.startsWith("youtube") && prefs.musicOnly) list = list.filter((t) => t.isMusic !== false);
-    return sortTracks(list, prefs.sort);
+    // 번호·난이도는 화면에 보이는 순서대로 찾는다. 결과에 따라 바뀌는 정렬(난이도·인기)은 대기열 순서에 쓰지 않는다
+    return prefs.sort === "title" || prefs.sort === "artist" ? sortTracks(list, prefs.sort) : list;
   }, [library.tracks, libKey, prefs.musicOnly, prefs.sort]);
 
   useEffect(() => {
     matchQueue.setWork(baseTracks, brands);
   }, [baseTracks, brands]);
 
+  const insightKey = anthropicApiKey(settings);
+  const insightModel = settings.anthropicModel ?? "";
+  useEffect(() => {
+    insightQueue.setWork(baseTracks, insightKey, insightModel);
+  }, [baseTracks, insightKey, insightModel]);
+
+  const metaByKey = useMemo(() => {
+    const map = new Map<string, SongMeta>();
+    const sources = { insights: insights.store, myDifficulty, chart, matches: queue.store, overrides };
+    for (const t of baseTracks) {
+      const key = trackKey(t);
+      if (!map.has(key)) map.set(key, songMeta(t, key, sources));
+    }
+    return map;
+  }, [baseTracks, insights.store, myDifficulty, chart, queue.store, overrides]);
+
   const rows = useMemo(() => {
     const q = compact(query);
-    return baseTracks.filter((t) => {
+    const filtered = baseTracks.filter((t) => {
       if (q && !compact(`${t.title} ${t.artists.join(" ")}`).includes(q)) return false;
-      if (prefs.onlyAvailable && !availableIn(trackKey(t), viewBrands, queue.store, overrides)) return false;
+      const key = trackKey(t);
+      if (prefs.onlyAvailable && !availableIn(key, viewBrands, queue.store, overrides)) return false;
+      if (prefs.onlySingAlong) {
+        const level = metaByKey.get(key)?.singAlong;
+        if (level !== "everyone" && level !== "many") return false;
+      }
       return true;
     });
-  }, [baseTracks, query, prefs.onlyAvailable, viewBrands, queue.store, overrides]);
+    return sortByMeta(filtered, prefs.sort, metaByKey);
+  }, [baseTracks, query, prefs.onlyAvailable, prefs.onlySingAlong, prefs.sort, viewBrands, queue.store, overrides, metaByKey]);
+
+  const insightProgress = useMemo(() => {
+    if (!aiEnabled) return null;
+    const keys = new Set(baseTracks.map(trackKey));
+    let done = 0;
+    for (const k of keys) if (insights.store[k]) done++;
+    return { done, total: keys.size };
+  }, [aiEnabled, baseTracks, insights.store]);
 
   const progress = useMemo(() => {
     const keys = new Set(baseTracks.map(trackKey));
@@ -161,7 +253,8 @@ export default function TjifyApp() {
 
   const pickRandom = () => {
     const now = Date.now();
-    const pool = baseTracks.filter((t) => {
+    // 검색어·필터("다 같이 부를 노래만" 등)를 건 목록 안에서 고른다
+    const pool = rows.filter((t) => {
       const key = trackKey(t);
       const recentlySung = (sung[key] ?? []).some((at) => now - at < RECENT_MS);
       return !recentlySung && availableIn(key, viewBrands, queue.store, overrides);
@@ -169,12 +262,11 @@ export default function TjifyApp() {
     setRandom({ track: pool.length ? pool[Math.floor(Math.random() * pool.length)] : null, pool: pool.length });
   };
 
-  const disconnect = async (provider: "spotify" | "google") => {
-    await apiPost(`/api/auth/${provider}/logout`).catch(() => undefined);
+  const disconnect = (provider: "spotify" | "google") => {
+    disconnectAccount(provider);
     libraryStore.forget(provider === "spotify" ? "spotify:" : "youtube:");
     forgetPlaylists(provider === "spotify" ? "spotify" : "youtube");
     if (playlist && (playlist.source === "spotify") === (provider === "spotify")) setPlaylist(null);
-    session.refresh();
   };
 
   const loginError = loginErrorMessage(params.get("error"));
@@ -190,12 +282,12 @@ export default function TjifyApp() {
 
   return (
     <div className="mx-auto flex min-h-dvh w-full max-w-3xl flex-col gap-5 px-4 pt-6 pb-16">
-      <header className="flex flex-wrap items-end gap-3">
-        <div className="flex-1">
+      <header className="flex flex-wrap items-start gap-3">
+        <div className="min-w-0 basis-full sm:basis-0 sm:flex-1">
           <h1 className="text-2xl font-black tracking-tight">
             TJify<span className="text-accent">.</span>
           </h1>
-          <p className="text-sm text-muted">내 플레이리스트를 노래방 번호로</p>
+          <p className="text-sm text-muted">{SITE_TAGLINE}</p>
         </div>
         <BrandToggle value={prefs.brandView} brands={brands} onChange={(brandView) => updatePrefs({ brandView })} />
       </header>
@@ -223,18 +315,11 @@ export default function TjifyApp() {
         </div>
       )}
 
-      {session.error && <p className="rounded-xl border border-danger/40 bg-danger/10 px-4 py-3 text-sm">서버 상태를 확인하지 못했어요: {session.error}</p>}
-      {s && !s.sessionSecretOk && (
-        <p className="rounded-xl border border-warn/40 bg-warn/10 px-4 py-3 text-sm">
-          서버에 <code>SESSION_SECRET</code>이 없어서 계정 연결을 쓸 수 없어요. README의 설정 방법을 따라 환경 변수를 넣어 주세요. 붙여넣기와 YouTube 링크 가져오기는 지금도 됩니다.
-        </p>
-      )}
-
-      <ConnectBar session={s} onDisconnect={disconnect} />
+      {(configured.spotify || configured.youtube) && <ConnectBar session={s} onDisconnect={disconnect} />}
 
       <nav aria-label="목록 고르기">
         <div className="flex flex-wrap gap-1.5" role="tablist">
-          {TABS.map((t) => (
+          {tabs.map((t) => (
             <button
               key={t.key}
               type="button"
@@ -255,11 +340,14 @@ export default function TjifyApp() {
         {tab === "link" && (
           <>
             {!activeLink && !anyConnected && (
-              <p className="text-lg font-bold leading-snug">
-                플레이리스트 링크만 넣으면
-                <br />
-                노래방 번호를 찾아 드려요.
-              </p>
+              <div className="space-y-1">
+                <p className="text-lg font-bold leading-snug">
+                  플레이리스트 링크만 넣으면
+                  <br />
+                  노래방 번호를 찾아 드려요.
+                </p>
+                <p className="text-sm text-muted">TJ·금영 번호와 함께 곡마다 난이도, 다 같이 부를 수 있는 곡인지도 보여 줘요.</p>
+              </div>
             )}
             <LinkImport session={s} onImport={openLink} />
             {activeLink && (
@@ -301,6 +389,7 @@ export default function TjifyApp() {
                 query={query}
                 onQuery={setQuery}
                 onlyAvailable={prefs.onlyAvailable}
+                onlySingAlong={prefs.onlySingAlong}
                 musicOnly={prefs.musicOnly}
                 sort={prefs.sort}
                 showMusicFilter={Boolean(libKey?.startsWith("youtube"))}
@@ -309,31 +398,49 @@ export default function TjifyApp() {
             )}
             <LibraryStatus status={library.status} loaded={library.tracks.length} total={library.total} error={library.error} onRetry={() => libKey && libraryStore.load(libKey, true)} />
             <MatchProgress done={progress.done} failed={progress.failed} total={progress.total} running={queue.running} error={queue.error} />
+            {insightProgress && insightProgress.total > 0 && (
+              <InsightStatus done={insightProgress.done} total={insightProgress.total} error={insights.error} />
+            )}
             {rows.length === 0 && library.status === "done" && (
               <p className="py-10 text-center text-muted">{baseTracks.length === 0 ? "곡이 없어요." : "조건에 맞는 곡이 없어요."}</p>
             )}
             <TrackList
-              key={`${libKey}|${query}|${prefs.sort}|${prefs.onlyAvailable}`}
+              key={`${libKey}|${query}|${prefs.sort}|${prefs.onlyAvailable}|${prefs.onlySingAlong}`}
               tracks={rows}
               brands={viewBrands}
               store={queue.store}
               overrides={overrides}
               sung={sung}
+              meta={metaByKey}
               onSelect={setSelected}
             />
           </>
         )}
       </main>
 
-      <footer className="mt-auto border-t border-line pt-4 text-xs leading-relaxed text-muted">
-        번호는 TJ미디어 공식 반주곡 검색과 Manana 노래방 API(금영)에서 찾아요. 노래방 기기 모델이나 업데이트 시점에 따라 실제 번호와 다를 수 있어요. TJ미디어·금영과는 관계없는 개인 프로젝트입니다.{" "}
+      <SettingsPanel />
+
+      <AboutSection aiEnabled={aiEnabled} />
+
+      <footer className="border-t border-line pt-4 text-xs leading-relaxed text-muted">
+        TJ미디어·금영과는 관계없는 개인 프로젝트입니다. 번호는 노래방 기기 모델이나 업데이트 시점에 따라 실제와 다를 수 있어요.{" "}
         <a href="https://github.com/psp3322/TJify" target="_blank" rel="noreferrer" className="underline underline-offset-2">
           GitHub
         </a>
       </footer>
 
       {selected && (
-        <TrackSheet track={selected} brands={viewBrands} store={queue.store} overrides={overrides} sung={sung} onClose={() => setSelected(null)} />
+        <TrackSheet
+          track={selected}
+          brands={viewBrands}
+          store={queue.store}
+          overrides={overrides}
+          sung={sung}
+          meta={metaByKey.get(trackKey(selected))}
+          aiEnabled={aiEnabled}
+          aiPending={insights.running}
+          onClose={() => setSelected(null)}
+        />
       )}
       {random && (
         <RandomPick
@@ -342,6 +449,7 @@ export default function TjifyApp() {
           brands={viewBrands}
           store={queue.store}
           overrides={overrides}
+          meta={random.track ? metaByKey.get(trackKey(random.track)) : undefined}
           onReroll={pickRandom}
           onClose={() => setRandom(null)}
         />
@@ -379,6 +487,7 @@ function Toolbar(props: {
   query: string;
   onQuery(q: string): void;
   onlyAvailable: boolean;
+  onlySingAlong: boolean;
   musicOnly: boolean;
   sort: SortMode;
   showMusicFilter: boolean;
@@ -404,6 +513,10 @@ function Toolbar(props: {
           <input type="checkbox" checked={props.onlyAvailable} onChange={(e) => updatePrefs({ onlyAvailable: e.target.checked })} className="accent-accent" />
           번호 있는 곡만
         </label>
+        <label className="flex items-center gap-1.5">
+          <input type="checkbox" checked={props.onlySingAlong} onChange={(e) => updatePrefs({ onlySingAlong: e.target.checked })} className="accent-accent" />
+          다 같이 부를 노래만
+        </label>
         {props.showMusicFilter && (
           <label className="flex items-center gap-1.5">
             <input type="checkbox" checked={props.musicOnly} onChange={(e) => updatePrefs({ musicOnly: e.target.checked })} className="accent-accent" />
@@ -420,10 +533,32 @@ function Toolbar(props: {
             <option value="default">추가한 순서</option>
             <option value="title">제목</option>
             <option value="artist">가수</option>
+            <option value="easy">쉬운 순</option>
+            <option value="hard">어려운 순</option>
+            <option value="popular">유명한 순</option>
           </select>
         </label>
       </div>
     </div>
+  );
+}
+
+function InsightStatus({ done, total, error }: { done: number; total: number; error: string | null }) {
+  if (error) {
+    return (
+      <p className="flex flex-wrap items-center gap-2 text-xs text-danger/90">
+        <span>난이도 추정이 멈췄어요: {error}</span>
+        <button type="button" onClick={() => insightQueue.retry()} className="shrink-0 rounded-full border border-line px-2 py-0.5 text-muted hover:text-ink">
+          다시 시도
+        </button>
+      </p>
+    );
+  }
+  if (done >= total) return null;
+  return (
+    <p className="text-xs text-muted">
+      난이도·대중성 살펴보는 중 {done}/{total}
+    </p>
   );
 }
 
@@ -480,7 +615,7 @@ function LinkHeader({
   const [copied, setCopied] = useState(false);
   const share = async () => {
     try {
-      await navigator.clipboard.writeText(`${window.location.origin}/?import=${encodeURIComponent(canonicalLinkUrl(link))}`);
+      await navigator.clipboard.writeText(`${siteUrl()}?import=${encodeURIComponent(canonicalLinkUrl(link))}`);
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
     } catch {
@@ -549,20 +684,21 @@ function ConnectPrompt({
         {loading ? (
           <span className="h-11 w-48 animate-pulse rounded-full bg-surface-2" aria-hidden />
         ) : configured ? (
-          <a
-            href={`/api/auth/${provider}/login`}
+          <button
+            type="button"
+            onClick={() => void startLogin(provider)}
             className={`rounded-full px-6 py-3 font-semibold text-black hover:brightness-110 ${isSpotify ? "bg-spotify" : "bg-youtube text-white"}`}
           >
             {name} 연결하기
-          </a>
+          </button>
         ) : (
-          <p className="text-sm text-warn">서버에 {name} 연동 설정이 아직 없어요 (README 참고).</p>
+          <p className="text-sm text-warn">이 사이트에는 아직 {name} 연결 설정이 없어요.</p>
         )}
         <button type="button" onClick={onLink} className="text-sm text-muted underline-offset-2 hover:text-ink hover:underline">
           연결 없이 플레이리스트 링크로 가져오기
         </button>
       </div>
-      <p className="mt-5 text-xs text-muted/80">읽기 권한만 요청하고, 로그인 정보는 이 브라우저의 암호화된 쿠키에만 남아요.</p>
+      <p className="mt-5 text-xs text-muted/80">읽기 권한만 요청하고, 로그인 정보는 이 브라우저에만 저장돼요.</p>
     </div>
   );
 }

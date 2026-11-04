@@ -7,8 +7,15 @@ export class AuthExpiredError extends Error {
 
 export class NotConfiguredError extends Error {
   constructor(provider: "spotify" | "google") {
-    super(`${provider === "spotify" ? "Spotify" : "Google"} 연동 설정(환경 변수)이 없습니다.`);
+    super(`이 사이트에는 아직 ${provider === "spotify" ? "Spotify" : "YouTube"} 연결 설정이 없어요.`);
     this.name = "NotConfiguredError";
+  }
+}
+
+export class NotConnectedError extends Error {
+  constructor(provider: "spotify" | "google") {
+    super(`${provider === "spotify" ? "Spotify" : "YouTube"} 계정이 연결돼 있지 않아요.`);
+    this.name = "NotConnectedError";
   }
 }
 
@@ -19,7 +26,7 @@ export class NotConfiguredError extends Error {
 export const LOGIN_ERRORS = {
   access_denied: "연결을 취소했어요.",
   state_mismatch: "로그인 확인 값이 맞지 않아요. 처음부터 다시 연결해 주세요.",
-  not_configured: "서버에 연동 설정(환경 변수)이 없어요. README의 설정 방법을 확인해 주세요.",
+  not_configured: "이 사이트에는 아직 연결 설정이 없어요.",
   network: "로그인 서버에 연결하지 못했어요. 잠시 뒤 다시 시도해 주세요.",
   failed: "연결에 실패했어요. 다시 시도해 주세요.",
 } as const;

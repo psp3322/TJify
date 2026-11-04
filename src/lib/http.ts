@@ -16,12 +16,21 @@ export interface FetchRetryOptions extends RequestInit {
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
+/**
+ * 연결 자체가 안 된 오류인지. Node는 "fetch failed", 브라우저는 "Failed to fetch"(Chrome)·
+ * "NetworkError …"(Firefox)·"Load failed"(Safari)로 알려 준다. 브라우저는 CORS 거절도 같은 오류로 보여 준다.
+ */
+export function isNetworkError(error: unknown): boolean {
+  if (!(error instanceof Error) || error instanceof UpstreamError) return false;
+  return /fetch failed|failed to fetch|load failed|networkerror|econn|enotfound|etimedout|socket/i.test(error.message);
+}
+
 /** 사용자에게 보여 줄 오류 문구. 네트워크 오류의 영어 메시지를 그대로 내보내지 않는다 */
 export function describeError(error: unknown, target = "서버"): string {
   if (error instanceof UpstreamError) return error.message;
   if (error instanceof Error) {
     if (error.name === "TimeoutError" || error.name === "AbortError") return `${target} 응답이 너무 늦어요.`;
-    if (/fetch failed|econn|enotfound|socket|network/i.test(error.message)) return `${target}에 연결하지 못했어요.`;
+    if (isNetworkError(error)) return `${target}에 연결하지 못했어요.`;
     return error.message;
   }
   return String(error);
@@ -29,15 +38,7 @@ export function describeError(error: unknown, target = "서버"): string {
 
 function isTransient(error: unknown): boolean {
   if (!(error instanceof Error)) return false;
-  const msg = error.message.toLowerCase();
-  return (
-    error.name === "TimeoutError" ||
-    error.name === "AbortError" ||
-    msg.includes("fetch failed") ||
-    msg.includes("econnreset") ||
-    msg.includes("etimedout") ||
-    msg.includes("socket")
-  );
+  return error.name === "TimeoutError" || error.name === "AbortError" || isNetworkError(error);
 }
 
 /** 429·5xx·일시적 네트워크 오류일 때만 지수 백오프로 다시 시도하는 fetch */

@@ -2,9 +2,11 @@
 
 import { useEffect, useRef } from "react";
 import { resolveNumber, trackKey, type MatchStore, type OverrideStore } from "@/lib/client/match-store";
+import type { SongMeta } from "@/lib/client/song-meta";
 import { markSung } from "@/lib/client/stores";
 import type { Brand, Track } from "@/lib/types";
 import { NumberBadge } from "./NumberBadge";
+import { SongBadges } from "./SongBadges";
 
 interface Props {
   track: Track | null;
@@ -12,12 +14,13 @@ interface Props {
   brands: Brand[];
   store: MatchStore;
   overrides: OverrideStore;
+  meta?: SongMeta;
   onReroll(): void;
   onClose(): void;
 }
 
 /** "오늘 뭐 부르지?" 무작위 추천 카드 */
-export function RandomPick({ track, poolSize, brands, store, overrides, onReroll, onClose }: Props) {
+export function RandomPick({ track, poolSize, brands, store, overrides, meta, onReroll, onClose }: Props) {
   const dialog = useRef<HTMLDialogElement>(null);
 
   useEffect(() => {
@@ -44,12 +47,17 @@ export function RandomPick({ track, poolSize, brands, store, overrides, onReroll
         <>
           <h2 className="mt-3 text-2xl font-bold leading-snug">{track.title}</h2>
           <p className="mt-1 text-muted">{track.artists.join(", ")}</p>
+          {meta && (
+            <div className="flex justify-center">
+              <SongBadges meta={meta} />
+            </div>
+          )}
           <div className="mt-5 flex justify-center gap-8">
             {brands.map((b) => (
               <NumberBadge key={b} brand={b} resolved={resolveNumber(key, b, store, overrides)} size="lg" />
             ))}
           </div>
-          <p className="mt-4 text-xs text-muted">최근 2주 안에 부른 곡은 빼고 {poolSize}곡 중에서 골랐어요.</p>
+          <p className="mt-4 text-xs text-muted">지금 목록의 조건에 맞는 곡 중 최근 2주 안에 부른 곡을 빼고 {poolSize}곡에서 골랐어요.</p>
           <div className="mt-5 flex justify-center gap-2">
             <button type="button" onClick={onReroll} className="rounded-full border border-line px-4 py-2 text-sm hover:bg-surface-2">
               다시 뽑기

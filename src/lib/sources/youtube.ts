@@ -28,6 +28,12 @@ interface VideoResource {
     categoryId?: string;
     thumbnails?: Thumbnails;
   };
+  statistics?: { viewCount?: string };
+}
+
+function viewCount(stats: VideoResource["statistics"]): number | undefined {
+  const n = Number(stats?.viewCount);
+  return Number.isFinite(n) && n >= 0 && stats?.viewCount !== undefined ? n : undefined;
 }
 
 interface PlaylistItemResource {
@@ -76,7 +82,9 @@ function toTrack(videoId: string, rawTitle: string, channel: string | undefined,
 export function normalizeLikedVideo(v: VideoResource): Track | null {
   const title = v.snippet?.title;
   if (!v.id || !title || UNAVAILABLE_TITLES.has(title)) return null;
-  return toTrack(v.id, title, v.snippet?.channelTitle, v.snippet?.thumbnails, v.snippet?.categoryId ?? "");
+  const track = toTrack(v.id, title, v.snippet?.channelTitle, v.snippet?.thumbnails, v.snippet?.categoryId ?? "");
+  const views = viewCount(v.statistics);
+  return views === undefined ? track : { ...track, views };
 }
 
 export function normalizePlaylistItem(item: PlaylistItemResource): Track | null {
@@ -86,7 +94,7 @@ export function normalizePlaylistItem(item: PlaylistItemResource): Track | null 
   return toTrack(videoId, s.title, s.videoOwnerChannelTitle, s.thumbnails);
 }
 
-/** 로그인한 사용자의 access token, 또는 공개 데이터만 읽는 서버 API 키 */
+/** 로그인한 사용자의 access token, 또는 공개 데이터만 읽는 API 키 */
 export type YouTubeAuth = { token: string } | { key: string };
 
 interface GoogleErrorBody {
@@ -106,15 +114,21 @@ async function youtubeGet<T>(auth: YouTubeAuth | string, path: string, params: R
   if (!res.ok) {
     const body = (await res.json().catch(() => null)) as GoogleErrorBody | null;
     const reason = body?.error?.errors?.[0]?.reason;
-    if (reason === "quotaExceeded") throw new UpstreamError("YouTube API 일일 할당량을 다 썼습니다. 내일 다시 시도하세요.", 429);
+    const detail = body?.error?.details?.find((d) => d.reason)?.reason;
+    // 키 자체의 문제는 재생목록 문제보다 먼저 알려 준다 (키 제한에 걸려도 reason은 "forbidden"으로 온다)
+    if (detail === "API_KEY_INVALID") throw new UpstreamError("YouTube API 키가 올바르지 않아요. 설정에서 키를 확인해 주세요.", 503);
+    if (detail === "API_KEY_HTTP_REFERRER_BLOCKED") {
+      throw new UpstreamError("이 사이트 주소에서는 YouTube API 키를 쓸 수 없게 막혀 있어요. Google Cloud에서 키의 웹사이트 제한에 이 주소를 넣어 주세요.", 503);
+    }
+    if (detail === "API_KEY_SERVICE_BLOCKED" || detail === "SERVICE_DISABLED") {
+      throw new UpstreamError("이 API 키로는 YouTube Data API를 쓸 수 없어요. Google Cloud에서 YouTube Data API v3를 켜 주세요.", 503);
+    }
+    if (reason === "quotaExceeded") throw new UpstreamError("YouTube API 일일 할당량을 다 썼어요. 내일 다시 시도하거나 설정에 내 API 키를 넣어 주세요.", 429);
     if (reason === "playlistNotFound") {
       throw new UpstreamError("재생목록을 찾을 수 없어요. 비공개 재생목록이나 YouTube Music 자동 믹스는 가져올 수 없어요.", 404);
     }
     if (reason === "playlistItemsNotAccessible" || reason === "forbidden") {
       throw new UpstreamError("비공개 재생목록이라 볼 수 없어요. 재생목록을 '공개'나 '일부 공개'로 바꾸면 가져올 수 있어요.", 403);
-    }
-    if (body?.error?.details?.some((d) => d.reason === "API_KEY_INVALID")) {
-      throw new UpstreamError("서버에 설정된 YOUTUBE_API_KEY가 올바르지 않아요.", 503);
     }
     throw new UpstreamError(`YouTube API 오류: ${body?.error?.message ?? `HTTP ${res.status}`}`, res.status);
   }
@@ -132,7 +146,7 @@ export async function fetchChannelName(token: string): Promise<string | undefine
 
 export async function fetchLikedVideos(token: string, cursor: string | null): Promise<TrackPage> {
   const res = await youtubeGet<ListResponse<VideoResource>>(token, "/videos", {
-    part: "snippet",
+    part: "snippet,statistics",
     myRating: "like",
     maxResults: "50",
     pageToken: cursor ?? "",
@@ -186,6 +200,28 @@ export async function fetchPlaylistItems(
     next: res.nextPageToken ?? null,
     total: res.pageInfo?.totalResults,
   };
+}
+
+/**
+ * 재생목록 항목에는 조회수가 없어서 videos.list로 한 번 더 받아 붙인다 (50곡에 할당량 1).
+ * 조회수는 "다들 아는 노래인지"를 가늠하는 데만 쓰므로 실패하면 그냥 넘어간다.
+ */
+export async function withViewCounts(auth: YouTubeAuth | string, page: TrackPage, fetchImpl?: typeof fetch): Promise<TrackPage> {
+  const ids = page.tracks.map((t) => t.id.replace(/^youtube:/, "")).filter(Boolean).slice(0, 50);
+  if (ids.length === 0) return page;
+  try {
+    const res = await youtubeGet<ListResponse<VideoResource>>(auth, "/videos", { part: "statistics", id: ids.join(","), maxResults: "50" }, fetchImpl);
+    const views = new Map((res.items ?? []).map((v) => [v.id, viewCount(v.statistics)]));
+    return {
+      ...page,
+      tracks: page.tracks.map((t) => {
+        const n = views.get(t.id.replace(/^youtube:/, ""));
+        return n === undefined ? t : { ...t, views: n };
+      }),
+    };
+  } catch {
+    return page;
+  }
 }
 
 /** 재생목록 제목. 못 가져와도 곡 목록은 보여 줄 수 있으니 실패하면 undefined */

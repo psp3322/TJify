@@ -3,8 +3,10 @@
 import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
 import { resolveNumber, trackKey, type MatchStore, type OverrideStore } from "@/lib/client/match-store";
+import type { SongMeta } from "@/lib/client/song-meta";
 import type { Brand, Track } from "@/lib/types";
 import { NumberBadge } from "./NumberBadge";
+import { SongBadges } from "./SongBadges";
 
 const PAGE = 150;
 
@@ -14,11 +16,12 @@ interface Props {
   store: MatchStore;
   overrides: OverrideStore;
   sung: Record<string, number[]>;
+  meta: Map<string, SongMeta>;
   onSelect(track: Track): void;
 }
 
 /** 곡 목록. 길면 스크롤할 때마다 PAGE개씩 더 그린다 */
-export function TrackList({ tracks, brands, store, overrides, sung, onSelect }: Props) {
+export function TrackList({ tracks, brands, store, overrides, sung, meta, onSelect }: Props) {
   const [limit, setLimit] = useState(PAGE);
   const sentinel = useRef<HTMLLIElement>(null);
   const hasMore = tracks.length > limit;
@@ -43,6 +46,7 @@ export function TrackList({ tracks, brands, store, overrides, sung, onSelect }: 
       {tracks.slice(0, limit).map((track) => {
         const key = trackKey(track);
         const sungCount = sung[key]?.length ?? 0;
+        const info = meta.get(key);
         return (
           <li key={track.id}>
             <button
@@ -57,6 +61,7 @@ export function TrackList({ tracks, brands, store, overrides, sung, onSelect }: 
                   {track.artists.join(", ") || "가수 정보 없음"}
                   {sungCount > 0 && <span className="ml-1.5 text-xs text-accent">🎤 {sungCount}</span>}
                 </span>
+                {info && <SongBadges meta={info} />}
               </span>
               <span className="flex shrink-0 gap-3">
                 {brands.map((b) => (

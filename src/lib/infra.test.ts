@@ -3,7 +3,6 @@ import { TtlCache } from "./cache";
 import { createCircuit } from "./circuit";
 import { describeError, fetchWithRetry, UpstreamError } from "./http";
 import { createLimiter } from "./limiter";
-import { createRateLimiter } from "./rate-limit";
 
 describe("TtlCache", () => {
   it("동시에 같은 키를 요청하면 한 번만 불러온다", async () => {
@@ -90,14 +89,5 @@ describe("describeError", () => {
   it("네트워크 오류를 한국어 문구로 바꾼다", () => {
     expect(describeError(new TypeError("fetch failed"), "노래방 검색")).toBe("노래방 검색에 연결하지 못했어요.");
     expect(describeError(Object.assign(new Error("t"), { name: "TimeoutError" }), "Spotify 서버")).toBe("Spotify 서버 응답이 너무 늦어요.");
-  });
-});
-
-describe("createRateLimiter", () => {
-  it("창 안에서 한도를 넘으면 막는다", () => {
-    const take = createRateLimiter(3, 60_000);
-    expect(take("ip", 2).ok).toBe(true);
-    expect(take("ip", 2).ok).toBe(false);
-    expect(take("other", 3).ok).toBe(true);
   });
 });

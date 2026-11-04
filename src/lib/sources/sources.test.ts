@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { normalizeSpotifyItems, normalizeSpotifyTrack, pickImage } from "./spotify";
-import { fetchPlaylistItems, fetchPlaylistTitle, normalizeLikedVideo, normalizePlaylistItem } from "./youtube";
+import { fetchPlaylistItems, fetchPlaylistTitle, normalizeLikedVideo, normalizePlaylistItem, withViewCounts } from "./youtube";
 
 // Spotify·YouTube API 문서의 응답 모양을 따른 테스트용 객체 (실제 계정 데이터 아님)
 const spotifyTrack = {
@@ -118,7 +118,17 @@ describe("YouTube 공개 재생목록 (API 키)", () => {
     });
     await expect(
       fetchPlaylistItems({ key: "k" }, "PLx", null, reply(400, { errors: [{ reason: "badRequest" }], details: [{ reason: "API_KEY_INVALID" }] })),
-    ).rejects.toMatchObject({ status: 503, message: expect.stringContaining("YOUTUBE_API_KEY") });
+    ).rejects.toMatchObject({ status: 503, message: expect.stringContaining("키가 올바르지 않아요") });
+  });
+
+  it("키의 웹사이트 제한에 걸리면 재생목록 문제가 아니라 키 설정 문제로 알려 준다", async () => {
+    const fetchImpl = vi.fn(async () =>
+      Response.json({ error: { errors: [{ reason: "forbidden" }], details: [{ reason: "API_KEY_HTTP_REFERRER_BLOCKED" }] } }, { status: 403 }),
+    ) as unknown as typeof fetch;
+    await expect(fetchPlaylistItems({ key: "k" }, "PLx", null, fetchImpl)).rejects.toMatchObject({
+      status: 503,
+      message: expect.stringContaining("웹사이트 제한"),
+    });
   });
 
   it("제목을 못 가져오면 undefined", async () => {
@@ -126,5 +136,29 @@ describe("YouTube 공개 재생목록 (API 키)", () => {
     const fail = vi.fn(async () => new Response("", { status: 500 })) as unknown as typeof fetch;
     await expect(fetchPlaylistTitle({ key: "k" }, "PL1", ok)).resolves.toBe("노래방 18번");
     await expect(fetchPlaylistTitle({ key: "k" }, "PL1", fail)).resolves.toBeUndefined();
+  });
+});
+
+describe("YouTube 조회수", () => {
+  it("재생목록 곡에 videos.list 조회수를 붙이고, 실패하면 그대로 둔다", async () => {
+    const page = {
+      tracks: [
+        { id: "youtube:v1", source: "youtube" as const, title: "a", artists: [] },
+        { id: "youtube:v2", source: "youtube" as const, title: "b", artists: [] },
+      ],
+      next: null,
+    };
+    const ok = vi.fn<typeof fetch>(async () => Response.json({ items: [{ id: "v1", statistics: { viewCount: "123456789" } }] }));
+    const withViews = await withViewCounts({ key: "k" }, page, ok);
+    expect(new URL(String(ok.mock.calls[0][0])).searchParams.get("id")).toBe("v1,v2");
+    expect(withViews.tracks.map((t) => t.views)).toEqual([123456789, undefined]);
+
+    const fail = vi.fn<typeof fetch>(async () => new Response("", { status: 500 }));
+    expect(await withViewCounts({ key: "k" }, page, fail)).toBe(page);
+  });
+
+  it("좋아요 영상은 statistics에서 바로 읽는다", () => {
+    const t = normalizeLikedVideo({ id: "v", snippet: { title: "IU - 밤편지", categoryId: "10" }, statistics: { viewCount: "42" } });
+    expect(t?.views).toBe(42);
   });
 });
