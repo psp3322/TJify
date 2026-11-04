@@ -1,0 +1,53 @@
+name: GitHub Pages
+
+# main에 올라오면 사이트를 빌드해서 GitHub Pages에 올린다.
+# 노래방 인기차트는 빌드할 때 받아 오므로, 매주 한 번 다시 빌드해 차트를 새로 받는다.
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "23 18 * * 0" # 매주 월요일 03:23 (한국 시간)
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+      - id: pages
+        uses: actions/configure-pages@v6
+      - run: npm ci
+      - run: npm run build
+        env:
+          # https://<사용자>.github.io/<저장소>/ 아래에서 열리도록 경로를 넣는다
+          NEXT_PUBLIC_BASE_PATH: ${{ steps.pages.outputs.base_path }}
+          # 모두 선택. 저장소 Settings → Secrets and variables → Actions → Variables 에 넣으면 켜진다 (사이트 JS에 그대로 들어가는 공개 값)
+          NEXT_PUBLIC_YOUTUBE_API_KEY: ${{ vars.YOUTUBE_API_KEY }}
+          NEXT_PUBLIC_SPOTIFY_CLIENT_ID: ${{ vars.SPOTIFY_CLIENT_ID }}
+          NEXT_PUBLIC_GOOGLE_CLIENT_ID: ${{ vars.GOOGLE_CLIENT_ID }}
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: out
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v5

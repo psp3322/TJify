@@ -24,7 +24,7 @@
 
 | 링크 | 로그인 없이 | 비고 |
 | --- | --- | --- |
-| YouTube·YouTube Music 재생목록 (`list=`가 들어간 주소) | 됨 | 공개·일부 공개 재생목록만. YouTube Music 자동 믹스는 안 됨 |
+| YouTube·YouTube Music 재생목록 (`list=`가 들어간 주소) | 됨 (YouTube API 키가 있을 때) | 공개·일부 공개 재생목록만. YouTube Music 자동 믹스는 안 됨 |
 | Spotify 플레이리스트 | 안 됨 | Spotify를 연결한 계정이 만들었거나 공동 작업 중인 플레이리스트만 |
 
 Spotify는 2026년 2월 정책 변경으로 개발 모드 앱이 다른 사람의 플레이리스트(공개라도)와 Spotify가 만든 플레이리스트를 읽지 못하게 막았습니다. 공식 API로는 방법이 없어서, 친구 플레이리스트는 붙여넣기를 쓰는 편이 빠릅니다.
@@ -33,38 +33,44 @@ Spotify는 2026년 2월 정책 변경으로 개발 모드 앱이 다른 사람�
 
 ## 번호·난이도·대중성은 어떻게 정하나요
 
-- **번호**: TJ는 TJ미디어 홈페이지의 반주곡 검색 결과를, 금영은 여러 노래방 번호 앱이 쓰는 공개 API(Manana)를 읽습니다. 띄어쓰기·괄호·버전 표시(`feat.`, `Live` 등)를 무시하고, "IU"와 "아이유"처럼 영어·한글 가수 이름을 이어서 비교합니다.
-- **난이도**: 노래방 난이도를 알려 주는 공개 데이터가 없어서 Claude가 "노래를 따로 배우지 않은 사람이 노래방에서 부를 때" 기준으로 추정합니다. 잘 모르는 곡은 지어내지 않고 비워 둡니다.
+- **번호**: TJ·금영 모두 여러 노래방 번호 앱이 쓰는 공개 API(Manana)에서 찾습니다. 띄어쓰기·괄호·버전 표시(`feat.`, `Live` 등)를 무시하고, "IU"와 "아이유"처럼 영어·한글 가수 이름을 이어서 비교합니다.
+- **난이도**: 노래방 난이도를 알려 주는 공개 데이터가 없어서 Claude가 "노래를 따로 배우지 않은 사람이 노래방에서 부를 때" 기준으로 추정합니다. 사이트 아래 **설정**에 자기 Anthropic API 키를 넣은 사람에게만 켜지고, 잘 모르는 곡은 지어내지 않고 비워 둡니다.
 - **다 같이 부를 수 있는지**: 아래 신호 중 가장 높은 쪽을 씁니다.
-  - 최근 1년 TJ 노래방 인기차트 TOP100에 든 곡 → "다 같이"
+  - 최근 1년 TJ 노래방 인기차트 TOP100에 든 곡 → "다 같이" (차트는 사이트를 빌드할 때 받아 오고, 매주 새로 받습니다)
   - YouTube 조회수 (YouTube에서 가져온 곡): 1억 회 이상 "다 같이", 2천만 회 이상 "대부분 앎", 300만 회 이상 "꽤 알려짐"
   - Claude가 추정한 대중성 (5단계)
 - 번호는 노래방 기기 모델이나 업데이트 시점에 따라, 난이도·대중성은 추정이라 실제와 다를 수 있습니다.
 
 ## 개인정보
 
-- 계정을 연결할 때는 읽기 권한만 요청하고, 로그인 토큰은 브라우저의 암호화된 쿠키에만 남습니다. 서버에 데이터베이스가 없습니다.
-- 찾은 번호, 직접 고른 번호, 내 난이도, 부른 기록은 각자의 브라우저에만 저장됩니다.
+- 이 사이트에는 서버가 없습니다. 노래방 번호 검색, YouTube·Spotify, Claude 요청은 모두 방문자 브라우저에서 해당 서비스로 바로 갑니다.
+- 계정을 연결할 때는 읽기 권한만 요청합니다. 로그인 토큰과 설정에 넣은 API 키, 찾은 번호, 직접 고른 번호, 내 난이도, 부른 기록은 각자의 브라우저에만 저장됩니다.
 - 난이도를 추정할 때는 곡 제목과 가수 이름만 Claude에 보냅니다.
 
-## 사이트 띄우기
+## 사이트 띄우기 (GitHub Pages)
 
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fpsp3322%2FTJify&project-name=tjify&repository-name=tjify)
+서버 없이 HTML·자바스크립트 파일만으로 돌아가는 정적 사이트라서 GitHub Pages에서 무료로 열 수 있습니다. 처음 한 번만 아래처럼 해 두면, 그다음부터는 main 브랜치에 코드가 올라올 때마다 사이트가 자동으로 새로 만들어집니다.
 
-버튼을 누르고 GitHub로 로그인한 뒤 Deploy를 누르면 바로 웹사이트 주소가 생깁니다. 환경 변수 없이도 붙여넣기와 번호 찾기는 됩니다. 나머지 기능은 Vercel 프로젝트의 Settings → Environment Variables에 키를 넣고 다시 배포하면 켜집니다.
+1. 저장소 **Settings → Pages**에서 **Build and deployment → Source**를 **GitHub Actions**로 바꿉니다.
+2. 코드를 main 브랜치에 올립니다. 이미 올라가 있다면 **Actions → GitHub Pages → Run workflow**로 직접 실행합니다.
+3. 1~2분 뒤 https://psp3322.github.io/TJify/ 에서 사이트가 열립니다.
 
-| 환경 변수 | 켜지는 기능 |
+키는 모두 선택입니다. 아무것도 넣지 않아도 붙여넣기와 번호 찾기는 되고, 방문자가 사이트 아래 **설정**에 자기 키를 넣어 쓸 수도 있습니다. 모든 방문자에게 기능을 켜 두려면 저장소 **Settings → Secrets and variables → Actions → Variables**에 아래 값을 넣고 워크플로를 다시 실행합니다.
+
+| 변수 | 켜지는 기능 |
 | --- | --- |
 | `YOUTUBE_API_KEY` | YouTube 재생목록 링크 가져오기, 조회수 |
-| `ANTHROPIC_API_KEY` | 난이도·대중성 추정 (Claude) |
-| `SESSION_SECRET` + `SPOTIFY_CLIENT_ID` / `GOOGLE_CLIENT_ID`·`GOOGLE_CLIENT_SECRET` | Spotify·YouTube 계정 연결 (좋아요 목록, 내 플레이리스트) |
+| `SPOTIFY_CLIENT_ID` | Spotify 계정 연결 (좋아요 목록, 내 플레이리스트) |
+| `GOOGLE_CLIENT_ID` | YouTube 계정 연결 (좋아요한 영상, 내 재생목록) |
 
-키를 만드는 방법, 로컬에서 실행하는 방법, 개발 명령은 [docs/SETUP.md](./docs/SETUP.md)에 있습니다.
+이 값들은 사이트 자바스크립트에 그대로 들어가는 공개 값입니다. YouTube API 키는 Google Cloud에서 이 사이트 주소에서만 쓰이도록 제한해 두세요. Anthropic API 키는 공개하면 안 되기 때문에, 난이도 추정은 쓰는 사람이 각자 설정에 자기 키를 넣는 방식입니다.
+
+키 만드는 방법, 로컬에서 실행하는 방법, 다른 곳에 올리는 방법은 [docs/SETUP.md](./docs/SETUP.md)에 있습니다.
 
 ## 참고와 면책
 
-- TJ 검색 경로와 결과 마크업 구조는 [tj-mcp](https://github.com/ara-hwang/tj-mcp)(MIT)를, TJ 인기차트 요청 방식은 [karaoke_singer](https://github.com/betty2859/karaoke_singer)를 참고했습니다.
-- 금영 번호는 [Manana 노래방 API](https://api.manana.kr/karaoke)에서 가져옵니다.
+- TJ 인기차트 요청 방식은 [karaoke_singer](https://github.com/betty2859/karaoke_singer)를 참고했습니다.
+- TJ·금영 번호는 [Manana 노래방 API](https://api.manana.kr/karaoke)에서 가져옵니다.
 - TJ미디어, 금영엔터테인먼트와 관계없는 개인 프로젝트입니다.
 
 라이선스: [Apache-2.0](./LICENSE)

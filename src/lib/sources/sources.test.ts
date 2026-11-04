@@ -118,7 +118,17 @@ describe("YouTube 공개 재생목록 (API 키)", () => {
     });
     await expect(
       fetchPlaylistItems({ key: "k" }, "PLx", null, reply(400, { errors: [{ reason: "badRequest" }], details: [{ reason: "API_KEY_INVALID" }] })),
-    ).rejects.toMatchObject({ status: 503, message: expect.stringContaining("YOUTUBE_API_KEY") });
+    ).rejects.toMatchObject({ status: 503, message: expect.stringContaining("키가 올바르지 않아요") });
+  });
+
+  it("키의 웹사이트 제한에 걸리면 재생목록 문제가 아니라 키 설정 문제로 알려 준다", async () => {
+    const fetchImpl = vi.fn(async () =>
+      Response.json({ error: { errors: [{ reason: "forbidden" }], details: [{ reason: "API_KEY_HTTP_REFERRER_BLOCKED" }] } }, { status: 403 }),
+    ) as unknown as typeof fetch;
+    await expect(fetchPlaylistItems({ key: "k" }, "PLx", null, fetchImpl)).rejects.toMatchObject({
+      status: 503,
+      message: expect.stringContaining("웹사이트 제한"),
+    });
   });
 
   it("제목을 못 가져오면 undefined", async () => {

@@ -25,8 +25,8 @@ export function AboutSection({ aiEnabled }: { aiEnabled: boolean }) {
 
         <Item title="번호는 어디서 가져오나요?">
           <p>
-            TJ는 TJ미디어 홈페이지의 반주곡 검색 결과를, 금영은 여러 노래방 번호 앱이 쓰는 공개 API(Manana)를 읽어요. 제목 표기가 달라도 찾을 수 있게 띄어쓰기·괄호를
-            무시하고, &quot;IU&quot;와 &quot;아이유&quot;처럼 영어·한글 가수 이름을 이어서 비교해요. 확실하지 않은 번호에는 <b>?</b>가 붙어요.
+            TJ·금영 번호 모두 여러 노래방 번호 앱이 쓰는 공개 API(Manana)에서 찾아요. 제목 표기가 달라도 찾을 수 있게 띄어쓰기·괄호를 무시하고, &quot;IU&quot;와
+            &quot;아이유&quot;처럼 영어·한글 가수 이름을 이어서 비교해요. 확실하지 않은 번호에는 <b>?</b>가 붙고, 곡을 눌러 노래방 사이트에서 직접 찾아볼 수도 있어요.
           </p>
         </Item>
 
@@ -34,11 +34,12 @@ export function AboutSection({ aiEnabled }: { aiEnabled: boolean }) {
           <ul className="list-disc space-y-1 pl-5">
             <li>
               <b>난이도</b>는 노래를 따로 배우지 않은 사람이 노래방에서 부를 때 기준으로 아주 쉬움~아주 어려움 다섯 단계예요.{" "}
-              {aiEnabled ? "Claude가 곡을 보고 추정해요." : "이 사이트에서는 자동 추정이 꺼져 있어요."} 직접 불러 보고 매긴 난이도가 있으면 그걸 먼저 보여 줘요.
+              {aiEnabled ? "Claude가 곡을 보고 추정해요." : "설정에 Anthropic API 키를 넣으면 Claude가 곡을 보고 추정해요."} 직접 불러 보고 매긴 난이도가 있으면
+              그걸 먼저 보여 줘요.
             </li>
             <li>
-              <b>다 같이</b>는 같이 간 사람들도 따라 부를 수 있을 만큼 알려진 곡이라는 뜻이에요. 최근 1년 TJ 노래방 인기차트 TOP100에 든 곡, YouTube 조회수가 많은 곡,
-              {aiEnabled ? " Claude가 '대부분 아는 곡'으로 본 곡" : ""}이 여기에 들어가요.
+              <b>다 같이</b>는 같이 간 사람들도 따라 부를 수 있을 만큼 알려진 곡이라는 뜻이에요. TJ 노래방 인기차트 TOP100(최근 1년, 매주 새로 받아요)에 든 곡,
+              YouTube 조회수가 많은 곡{aiEnabled ? ", Claude가 '대부분 아는 곡'으로 본 곡" : ""}이 여기에 들어가요.
             </li>
             <li>추정이라 틀릴 수 있어요. 특히 덜 알려진 곡은 &quot;모름&quot;으로 남겨 둬요.</li>
           </ul>
@@ -46,7 +47,7 @@ export function AboutSection({ aiEnabled }: { aiEnabled: boolean }) {
 
         <Item title="어떤 링크를 넣을 수 있나요?">
           <ul className="list-disc space-y-1 pl-5">
-            <li>YouTube·YouTube Music: 공개나 일부 공개 재생목록은 로그인 없이 가져와요. YouTube Music 자동 믹스는 안 돼요.</li>
+            <li>YouTube·YouTube Music: 공개나 일부 공개 재생목록은 로그인 없이 가져와요 (YouTube API 키가 있을 때). YouTube Music 자동 믹스는 안 돼요.</li>
             <li>
               Spotify: Spotify 정책(2026년 2월 변경)상 연결한 계정이 만들었거나 공동 작업 중인 플레이리스트만 읽을 수 있어요. 다른 사람 플레이리스트나 Spotify가 만든
               플레이리스트는 막혀 있어요.
@@ -57,8 +58,8 @@ export function AboutSection({ aiEnabled }: { aiEnabled: boolean }) {
 
         <Item title="개인정보는요?">
           <p>
-            로그인은 읽기 권한만 요청하고, 토큰은 이 브라우저의 암호화된 쿠키에만 남아요. 찾은 번호와 부른 기록은 이 브라우저에만 저장되고 서버에는 따로 남기지
-            않아요. 난이도를 추정할 때는 곡 제목과 가수 이름만 Claude에 보내요.
+            이 사이트는 서버 없이 GitHub Pages에서 돌아가요. 노래방 번호 검색, YouTube·Spotify, Claude 요청은 모두 이 브라우저에서 해당 서비스로 바로 가고, 찾은
+            번호·부른 기록·로그인 정보·API 키는 이 브라우저에만 저장돼요. 로그인은 읽기 권한만 요청하고, 난이도를 추정할 때는 곡 제목과 가수 이름만 Claude에 보내요.
           </p>
         </Item>
       </div>

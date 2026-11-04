@@ -1,8 +1,9 @@
 "use client";
 
 import { useSyncExternalStore } from "react";
+import { describeError } from "@/lib/http";
 import type { Track, TrackPage } from "@/lib/types";
-import { ApiClientError, apiGet } from "./api";
+import { libraryLoader } from "./library";
 
 export interface LibraryState {
   status: "idle" | "loading" | "done" | "error";
@@ -11,7 +12,6 @@ export interface LibraryState {
   /** 링크로 가져온 플레이리스트의 제목 */
   title?: string;
   error?: string;
-  errorCode?: string;
 }
 
 const EMPTY: LibraryState = { status: "idle", tracks: [] };
@@ -24,23 +24,6 @@ const listeners = new Set<() => void>();
 function set(key: string, state: LibraryState) {
   states.set(key, state);
   for (const l of listeners) l();
-}
-
-/**
- * 목록 키 → 가져올 API 경로.
- *   "spotify:liked", "youtube:playlist:PL123"  연결한 계정의 좋아요·플레이리스트
- *   "link:youtube:PL123", "link:spotify:37i…"  붙여넣은 링크
- */
-export function libraryEndpoint(key: string): string | null {
-  const [first, second, third] = key.split(":");
-  if (first === "link") {
-    if ((second === "spotify" || second === "youtube") && third) return `/api/import/${second}/${encodeURIComponent(third)}`;
-    return null;
-  }
-  if (first !== "spotify" && first !== "youtube") return null;
-  if (second === "liked") return `/api/library/${first}/liked`;
-  if (second === "playlist" && third) return `/api/library/${first}/playlists/${encodeURIComponent(third)}`;
-  return null;
 }
 
 export const libraryStore = {
@@ -57,8 +40,8 @@ export const libraryStore = {
   async load(key: string, force = false) {
     const current = states.get(key);
     if (!force && current && (current.status === "loading" || current.status === "done")) return;
-    const endpoint = libraryEndpoint(key);
-    if (!endpoint) return;
+    const loadPage = libraryLoader(key);
+    if (!loadPage) return;
 
     const tracks: Track[] = [];
     const seen = new Set<string>();
@@ -68,8 +51,7 @@ export const libraryStore = {
     set(key, { status: "loading", tracks: [] });
     try {
       do {
-        const url: string = cursor ? `${endpoint}?cursor=${encodeURIComponent(cursor)}` : endpoint;
-        const page: TrackPage = await apiGet<TrackPage>(url);
+        const page: TrackPage = await loadPage(cursor);
         for (const t of page.tracks) {
           if (seen.has(t.id)) continue;
           seen.add(t.id);
@@ -87,8 +69,7 @@ export const libraryStore = {
         tracks,
         total,
         title,
-        error: error instanceof Error ? error.message : "목록을 불러오지 못했습니다.",
-        errorCode: error instanceof ApiClientError ? error.code : undefined,
+        error: describeError(error, "음악 서비스"),
       });
     }
   },

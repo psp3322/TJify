@@ -38,7 +38,7 @@ export function SongInfoSection({ trackKeyValue, meta, aiEnabled, aiPending }: P
         {meta.aiDifficulty === null && (
           <p className="text-xs text-muted">
             {!aiEnabled
-              ? "자동 난이도는 꺼져 있어요. 불러 보고 직접 매겨 두면 다음에 참고할 수 있어요."
+              ? "자동 난이도는 꺼져 있어요. 사이트 아래 설정에 Anthropic API 키를 넣으면 Claude가 추정해 줘요. 불러 보고 직접 매겨 둘 수도 있어요."
               : aiPending
                 ? "난이도를 추정하는 중이에요…"
                 : "Claude도 잘 모르는 곡이에요. 직접 매겨 두세요."}
@@ -70,7 +70,7 @@ export function SongInfoSection({ trackKeyValue, meta, aiEnabled, aiPending }: P
         <ul className="space-y-0.5 text-xs text-muted">
           {meta.chart && (
             <li>
-              최근 1년 TJ 노래방 인기차트 TOP100 · 최고 {meta.chart[0]}위 ({meta.chart[1]})
+              TJ 노래방 인기차트 TOP100 · 최고 {meta.chart[0]}위 ({meta.chart[1]})
             </li>
           )}
           {meta.aiPopularity !== null && <li>Claude 추정 대중성: {meta.aiPopularity}/5</li>}

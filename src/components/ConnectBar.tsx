@@ -1,13 +1,14 @@
 "use client";
 
-import type { ProviderStatus, SessionStatus } from "@/lib/types";
+import { startLogin } from "@/lib/client/auth";
+import type { ProviderStatus, SiteStatus } from "@/lib/types";
 
 interface Props {
-  session: SessionStatus | null;
+  session: SiteStatus | null;
   onDisconnect(provider: "spotify" | "google"): void;
 }
 
-/** 상단의 계정 연결 상태. 서버에 설정된 서비스만 보여 준다 */
+/** 상단의 계정 연결 상태. 이 사이트에 연결 설정이 들어 있는 서비스만 보여 준다 */
 export function ConnectBar({ session, onDisconnect }: Props) {
   return (
     <div className="flex flex-wrap gap-2">
@@ -55,20 +56,15 @@ function ConnectChip({
       </span>
     );
   }
-  if (!status.configured) {
-    return (
-      <span className="rounded-full border border-dashed border-line px-3 py-1.5 text-sm text-muted" title="서버 환경 변수가 설정되지 않았습니다 (README 참고)">
-        {label} 설정 필요
-      </span>
-    );
-  }
+  if (!status.configured) return null;
   return (
-    <a
-      href={`/api/auth/${provider}/login`}
+    <button
+      type="button"
+      onClick={() => void startLogin(provider)}
       className="flex items-center gap-2 rounded-full border border-line bg-surface px-3 py-1.5 text-sm hover:bg-surface-2"
     >
       <span className={`size-2 rounded-full ${dot} opacity-50`} aria-hidden />
       {label} 연결
-    </a>
+    </button>
   );
 }

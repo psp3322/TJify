@@ -1,19 +1,19 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { betaZodOutputFormat } from "@anthropic-ai/sdk/helpers/beta/zod";
 import * as z from "zod/v4";
+import { DEFAULT_MODEL } from "./models";
 import { DIFFICULTY_TAGS, type InsightRequestItem, type SongInsight } from "./types";
 
 /*
  * 곡 난이도·대중성 추정 (Claude API).
  * 노래방 난이도나 "다들 아는 노래인지"를 알려 주는 공개 데이터가 없어서 Claude의 지식으로 추정한다.
+ * 이 사이트에는 서버가 없으므로, 방문자가 설정에 넣은 자기 Anthropic API 키로 브라우저에서 바로 부른다.
  * 모르는 곡은 지어내지 말고 known=false로 답하게 한다.
  */
 
-export const DEFAULT_MODEL = "claude-opus-5-5";
+export { DEFAULT_MODEL };
 /** 서버 측 거절 폴백("default")을 받는 모델. Haiku 5.5에는 폴백이 없어서 붙이지 않는다 */
 const FALLBACK_MODELS = new Set(["claude-opus-5-5", "claude-opus-5", "claude-fable-5-1", "claude-sonnet-5-5"]);
-const EFFORTS = ["low", "medium", "high", "xhigh", "max"] as const;
-type Effort = (typeof EFFORTS)[number];
 
 export const MAX_INSIGHT_BATCH = 20;
 
@@ -56,18 +56,9 @@ export class InsightRefusedError extends Error {
   }
 }
 
-export function insightModel(): string {
-  return process.env.ANTHROPIC_MODEL?.trim() || DEFAULT_MODEL;
-}
-
-function insightEffort(): Effort {
-  const value = process.env.ANTHROPIC_EFFORT?.trim() as Effort | undefined;
-  // 곡 목록 분류라 생각을 길게 할 일이 없다
-  return value && EFFORTS.includes(value) ? value : "low";
-}
-
-export function isInsightConfigured(): boolean {
-  return Boolean(process.env.ANTHROPIC_API_KEY?.trim() || process.env.ANTHROPIC_AUTH_TOKEN?.trim());
+/** 방문자 자신의 키로 브라우저에서 바로 부르는 클라이언트. 키는 그 브라우저에만 저장된다 */
+export function createInsightClient(apiKey: string): Anthropic {
+  return new Anthropic({ apiKey, dangerouslyAllowBrowser: true });
 }
 
 const clamp = (n: number | null): number | null => (n === null ? null : Math.min(5, Math.max(1, Math.round(n))));
@@ -88,18 +79,16 @@ export function toInsights(count: number, output: Output): Array<SongInsight | n
   });
 }
 
-let defaultClient: Anthropic | undefined;
-
-export async function estimateSongs(items: InsightRequestItem[], client: InsightClient = (defaultClient ??= new Anthropic())): Promise<Array<SongInsight | null>> {
+export async function estimateSongs(items: InsightRequestItem[], client: InsightClient, model = DEFAULT_MODEL): Promise<Array<SongInsight | null>> {
   if (items.length === 0) return [];
-  const model = insightModel();
   const list = items.map((item, i) => ({ i, title: item.title, artist: item.artists.join(", ") || "알 수 없음" }));
 
   const response = await client.beta.messages.parse({
     model,
     max_tokens: 16000,
     ...(FALLBACK_MODELS.has(model) ? { betas: ["server-side-fallback-2026-07-01"], fallbacks: "default" as const } : {}),
-    output_config: { effort: insightEffort(), format: betaZodOutputFormat(OutputSchema) },
+    // 곡 목록 분류라 생각을 길게 할 일이 없다
+    output_config: { effort: "low", format: betaZodOutputFormat(OutputSchema) },
     system: SYSTEM_PROMPT,
     messages: [{ role: "user", content: JSON.stringify(list) }],
   });
@@ -107,4 +96,28 @@ export async function estimateSongs(items: InsightRequestItem[], client: Insight
   if (response.stop_reason === "refusal") throw new InsightRefusedError();
   if (!response.parsed_output) throw new Error("Claude 응답을 읽지 못했습니다.");
   return toInsights(items.length, response.parsed_output);
+}
+
+export interface InsightErrorInfo {
+  message: string;
+  /** 잠시 뒤 저절로 다시 시도해도 되는 오류면 기다릴 초 */
+  retryAfterSec?: number;
+}
+
+/** Claude API 오류를 화면에 보여 줄 문구로 바꾼다 */
+export function describeInsightError(error: unknown): InsightErrorInfo {
+  if (error instanceof InsightRefusedError) return { message: error.message };
+  if (error instanceof Anthropic.AuthenticationError) return { message: "Anthropic API 키가 올바르지 않아요. 설정에서 키를 다시 넣어 주세요." };
+  if (error instanceof Anthropic.PermissionDeniedError) return { message: "이 API 키로는 고른 모델을 쓸 수 없어요. 설정에서 다른 모델을 골라 보세요." };
+  if (error instanceof Anthropic.NotFoundError) return { message: "고른 모델을 찾을 수 없어요. 설정에서 다른 모델을 골라 보세요." };
+  if (error instanceof Anthropic.RateLimitError) {
+    const retry = Number(error.headers?.get("retry-after"));
+    return { message: "Anthropic API 요청 한도에 걸렸어요.", retryAfterSec: Number.isFinite(retry) && retry > 0 ? retry : 30 };
+  }
+  if (error instanceof Anthropic.BadRequestError && /credit balance/i.test(error.message)) {
+    return { message: "Anthropic 계정의 크레딧이 부족해요. Claude Console에서 충전한 뒤 다시 시도해 주세요." };
+  }
+  if (error instanceof Anthropic.APIConnectionError) return { message: "Anthropic API에 연결하지 못했어요." };
+  if (error instanceof Anthropic.APIError) return { message: `Anthropic API 오류 (HTTP ${error.status ?? "?"})` };
+  return { message: error instanceof Error ? error.message : "난이도를 추정하지 못했어요." };
 }

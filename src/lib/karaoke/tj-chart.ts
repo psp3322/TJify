@@ -1,8 +1,9 @@
-import { fetchWithRetry, UpstreamError } from "@/lib/http";
+import { describeError, fetchWithRetry, UpstreamError } from "@/lib/http";
+import { fetchMananaPopular } from "./manana";
 import { userAgent } from "./user-agent";
 
 /*
- * TJ미디어 인기차트(TOP100).
+ * TJ미디어 인기차트(TOP100). 사이트를 빌드할 때 한 번 받아 정적 파일(/data/tj-chart.json)로 넣는다.
  * 차트 화면(/chart/top100)이 쓰는 내부 API를 화면과 같은 방식으로 부른다:
  * 차트 화면을 한 번 열어 세션 쿠키와 CSRF_TOKEN 쿠키를 받고, 그 값을 X-CSRF-TOKEN 헤더에 실어 POST 한다.
  * 응답 항목: { rank, pro(곡번호), indexTitle(제목), indexSong(가수), ... }
@@ -21,6 +22,8 @@ export interface ChartEntry {
 
 export interface ChartIndex {
   updatedAt: string;
+  /** 어디서 받은 차트인지. 둘 다 못 받았으면 "none" (빈 차트) */
+  source: "tj" | "manana" | "none";
   /** TJ 곡번호 → [그 기간 최고 순위, 기간 이름] */
   songs: Record<string, [number, string]>;
 }
@@ -133,5 +136,28 @@ export async function buildTjChartIndex(now = new Date(), fetchImpl: typeof fetc
     await sleep(200);
   }
   if (succeeded === 0) throw lastError ?? new UpstreamError("TJ 차트를 받지 못했습니다");
-  return { updatedAt: now.toISOString(), songs };
+  return { updatedAt: now.toISOString(), source: "tj", songs };
+}
+
+/**
+ * 빌드에 넣을 차트. TJ 공식 차트를 먼저 받고, 안 되면 Manana의 TJ 인기곡(최근 한 달)으로 대신한다.
+ * 둘 다 안 되면 빈 차트를 돌려준다. 차트가 없어도 사이트는 AI 추정과 조회수로 '다 같이' 여부를 판단한다.
+ */
+export async function buildChartIndex(now = new Date(), fetchImpl: typeof fetch = fetch): Promise<ChartIndex> {
+  try {
+    return await buildTjChartIndex(now, fetchImpl);
+  } catch (error) {
+    console.warn(`[chart] TJ 인기차트를 받지 못했습니다: ${describeError(error, "TJ 사이트")}`);
+  }
+  try {
+    const entries = await fetchMananaPopular("tj", "monthly", { fetchImpl, headers: { "User-Agent": userAgent() } });
+    if (entries.length > 0) {
+      const songs: Record<string, [number, string]> = {};
+      for (const e of entries) if (!songs[e.no] || e.rank < songs[e.no][0]) songs[e.no] = [e.rank, "최근 한 달"];
+      return { updatedAt: now.toISOString(), source: "manana", songs };
+    }
+  } catch (error) {
+    console.warn(`[chart] Manana 인기곡도 받지 못했습니다: ${describeError(error, "Manana")}`);
+  }
+  return { updatedAt: now.toISOString(), source: "none", songs: {} };
 }

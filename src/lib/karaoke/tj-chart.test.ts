@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { buildTjChartIndex, monthWindows, parseTjChart } from "./tj-chart";
+import { buildChartIndex, buildTjChartIndex, monthWindows, parseTjChart } from "./tj-chart";
 
 // TJ 차트 API 응답 필드(rank, pro, indexTitle, indexSong)만 맞춘 테스트용 데이터 (실제 차트 아님)
 const chart = (items: Array<[number, string]>) => ({
@@ -54,5 +54,21 @@ describe("buildTjChartIndex", () => {
     const index = await pending;
     vi.useRealTimers();
     expect(index.songs).toEqual({ "111": [2, "2026년 9월"], "222": [9, "2026년 9월"] });
+    expect(index.source).toBe("tj");
+  });
+});
+
+describe("buildChartIndex", () => {
+  it("TJ 사이트가 막히면 Manana 인기곡으로, 그것도 안 되면 빈 차트로 넘어간다", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const tjDown = vi.fn<typeof fetch>(async (url) =>
+      String(url).includes("manana") ? Response.json([{ brand: "tj", no: "777", title: "곡", singer: "가수" }]) : new Response("", { status: 403 }),
+    );
+    const viaManana = await buildChartIndex(new Date(Date.UTC(2026, 9, 15)), tjDown);
+    expect(viaManana).toMatchObject({ source: "manana", songs: { "777": [1, "최근 한 달"] } });
+
+    const allDown = vi.fn<typeof fetch>(async () => new Response("", { status: 403 }));
+    await expect(buildChartIndex(new Date(Date.UTC(2026, 9, 15)), allDown)).resolves.toMatchObject({ source: "none", songs: {} });
+    vi.restoreAllMocks();
   });
 });

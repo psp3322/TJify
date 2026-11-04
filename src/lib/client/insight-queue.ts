@@ -1,10 +1,10 @@
 "use client";
 
 import { useSyncExternalStore } from "react";
-import type { InsightRequestItem, InsightResult, SongInsight } from "@/lib/insights/types";
+import type { InsightClient } from "@/lib/insights/claude";
+import type { InsightRequestItem, SongInsight } from "@/lib/insights/types";
 import { trackKey } from "@/lib/track-key";
 import type { Track } from "@/lib/types";
-import { ApiClientError, apiPost } from "./api";
 import { loadJson, saveJson, STORAGE_KEYS } from "./storage";
 
 export interface StoredInsight {
@@ -32,14 +32,17 @@ function isFresh(entry: StoredInsight | undefined): boolean {
 }
 
 /**
- * 화면에 올라온 곡의 난이도·대중성을 BATCH곡씩 차례로 물어본다 (서버에 ANTHROPIC_API_KEY가 있을 때만).
+ * 화면에 올라온 곡의 난이도·대중성을 BATCH곡씩 차례로 Claude에 물어본다.
+ * 방문자가 설정에 Anthropic API 키를 넣었을 때만 돌고, 브라우저에서 API를 바로 부른다.
  * 결과는 localStorage에 남겨 다음 방문 때 다시 묻지 않는다.
  */
 class InsightQueue {
   private store: InsightStore = {};
   private loaded = false;
   private tracks: Track[] = [];
-  private enabled = false;
+  private apiKey = "";
+  private model = "";
+  private client: InsightClient | null = null;
   private readonly attempted = new Set<string>();
   private error: string | null = null;
   private looping = false;
@@ -62,9 +65,17 @@ class InsightQueue {
 
   getServerSnapshot = () => SERVER_SNAPSHOT;
 
-  setWork(tracks: Track[], enabled: boolean) {
+  /** apiKey가 빈 값이면 멈춘다. 키나 모델을 바꾸면 이전 오류를 지우고 다시 시도한다 */
+  setWork(tracks: Track[], apiKey: string, model: string) {
     this.tracks = tracks;
-    this.enabled = enabled;
+    if (apiKey !== this.apiKey || model !== this.model) {
+      this.apiKey = apiKey;
+      this.model = model;
+      this.client = null;
+      this.error = null;
+      this.attempted.clear();
+      this.emit();
+    }
     void this.pump();
   }
 
@@ -113,28 +124,39 @@ class InsightQueue {
   }
 
   private async pump() {
-    if (this.looping || !this.enabled || this.error || typeof window === "undefined") return;
+    if (this.looping || !this.apiKey || this.error || typeof window === "undefined") return;
     this.ensureLoaded();
+    if (this.nextBatch().length === 0) return;
     this.looping = true;
     this.emit();
     try {
-      while (this.enabled && !this.error) {
+      // Anthropic SDK는 키를 넣은 사람에게만 필요하니 이때 처음 불러온다
+      let claude: typeof import("@/lib/insights/claude");
+      try {
+        claude = await import("@/lib/insights/claude");
+      } catch {
+        this.error = "난이도 추정 기능을 불러오지 못했어요. 새로고침해 주세요.";
+        return;
+      }
+      while (this.apiKey && !this.error) {
         const batch = this.nextBatch();
         if (batch.length === 0) break;
         for (const item of batch) this.attempted.add(item.key);
+        const apiKey = this.apiKey;
         try {
-          const { results } = await apiPost<{ results: InsightResult[] }>("/api/song-insights", { items: batch });
+          this.client ??= claude.createInsightClient(apiKey);
+          const insights = await claude.estimateSongs(batch, this.client, this.model || claude.DEFAULT_MODEL);
+          // 기다리는 사이 키가 바뀌었으면 이 결과는 버린다
+          if (apiKey !== this.apiKey) continue;
           const now = Date.now();
           this.store = { ...this.store };
-          for (const r of results) this.store[r.key] = { at: now, insight: r.insight };
+          batch.forEach((item, i) => (this.store[item.key] = { at: now, insight: insights[i] ?? null }));
           this.scheduleSave();
         } catch (error) {
           for (const item of batch) this.attempted.delete(item.key);
-          if (error instanceof ApiClientError && error.status === 429 && error.retryAfterSec) {
-            await sleep(error.retryAfterSec * 1000);
-          } else {
-            this.error = error instanceof Error ? error.message : "난이도를 추정하지 못했어요.";
-          }
+          const info = claude.describeInsightError(error);
+          if (info.retryAfterSec) await sleep(info.retryAfterSec * 1000);
+          else if (apiKey === this.apiKey) this.error = info.message;
         }
         this.emit();
       }

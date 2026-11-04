@@ -2,7 +2,8 @@
 
 import Image from "next/image";
 import { useEffect, useState } from "react";
-import { apiGet } from "@/lib/client/api";
+import { fetchPlaylists } from "@/lib/client/library";
+import { describeError } from "@/lib/http";
 import type { PlaylistSummary } from "@/lib/types";
 
 export type PlaylistSource = "spotify" | "youtube";
@@ -39,13 +40,13 @@ export function PlaylistPicker({ connected, onSelect }: Props) {
   useEffect(() => {
     if (!active || cache.has(active)) return;
     let alive = true;
-    apiGet<{ playlists: PlaylistSummary[] }>(`/api/library/${active}/playlists`).then(
-      ({ playlists }) => {
+    fetchPlaylists(active).then(
+      (playlists) => {
         cache.set(active, playlists);
         if (alive) setState({ source: active, items: playlists, error: null });
       },
       (error: unknown) => {
-        if (alive) setState({ source: active, items: null, error: error instanceof Error ? error.message : "목록을 불러오지 못했습니다." });
+        if (alive) setState({ source: active, items: null, error: describeError(error, active === "spotify" ? "Spotify" : "YouTube") });
       },
     );
     return () => {

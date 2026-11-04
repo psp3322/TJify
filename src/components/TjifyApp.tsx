@@ -2,14 +2,15 @@
 
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
-import { useSession } from "@/hooks/useSession";
+import { useSiteStatus } from "@/hooks/useSiteStatus";
 import { loginErrorMessage } from "@/lib/auth/errors";
-import { apiPost } from "@/lib/client/api";
+import { completeLogin, disconnect as disconnectAccount, readOAuthResponse, startLogin, type LoginOutcome } from "@/lib/client/auth";
 import { libraryStore, useLibrary } from "@/lib/client/library-store";
 import { useTjChart } from "@/lib/client/chart-store";
 import { insightQueue, useInsights } from "@/lib/client/insight-queue";
 import { matchQueue, useMatchQueue } from "@/lib/client/match-queue";
 import { hasNumber, resolveNumber, trackKey, type MatchStore, type OverrideStore } from "@/lib/client/match-store";
+import { anthropicApiKey, settingsStore } from "@/lib/client/settings";
 import { songMeta, type SongMeta } from "@/lib/client/song-meta";
 import {
   myDifficultyStore,
@@ -24,6 +25,7 @@ import {
   type SortMode,
 } from "@/lib/client/stores";
 import { useStoredValue } from "@/lib/client/stored-value";
+import { siteUrl } from "@/lib/config";
 import { MATCHER_VERSION } from "@/lib/constants";
 import { canonicalLinkUrl, isPlaylistLink, parsePlaylistLink, type PlaylistLink } from "@/lib/playlist-link";
 import { compact } from "@/lib/text/normalize";
@@ -37,6 +39,7 @@ import { MatchProgress } from "./MatchProgress";
 import { PastePanel } from "./PastePanel";
 import { forgetPlaylists, PlaylistPicker, type PlaylistSelection } from "./PlaylistPicker";
 import { RandomPick } from "./RandomPick";
+import { SettingsPanel } from "./SettingsPanel";
 import { TrackList } from "./TrackList";
 import { TrackSheet } from "./TrackSheet";
 
@@ -51,6 +54,19 @@ const TABS: Array<{ key: TabKey; label: string }> = [
 ];
 
 const RECENT_MS = 14 * 24 * 60 * 60 * 1000;
+/** 번호는 TJ·금영 둘 다 찾고, 화면에는 고른 브랜드만 보여 준다 */
+const ALL_BRANDS: Brand[] = [...BRANDS];
+
+let oauthReturn: Promise<LoginOutcome | null> | undefined;
+
+/** 로그인 화면에서 돌아왔으면 한 번만 마무리한다 (개발 모드에서 effect가 두 번 돌아도 같은 결과를 쓴다) */
+function finishOAuthReturn(): Promise<LoginOutcome | null> {
+  if (!oauthReturn) {
+    const response = readOAuthResponse(window.location.search, window.location.hash);
+    oauthReturn = response ? completeLogin(response) : Promise.resolve(null);
+  }
+  return oauthReturn;
+}
 
 function sortTracks(tracks: Track[], mode: "title" | "artist"): Track[] {
   const pick = mode === "title" ? (t: Track) => t.title : (t: Track) => t.artists[0] ?? "";
@@ -77,7 +93,8 @@ function availableIn(key: string, brands: Brand[], store: MatchStore, overrides:
 }
 
 export default function TjifyApp() {
-  const session = useSession();
+  const s = useSiteStatus();
+  const settings = useStoredValue(settingsStore);
   const prefs = useStoredValue(prefsStore);
   const overrides = useStoredValue(overridesStore);
   const sung = useStoredValue(sungStore);
@@ -96,11 +113,10 @@ export default function TjifyApp() {
   const chart = useTjChart();
   const myDifficulty = useStoredValue(myDifficultyStore);
 
-  const s = session.data;
   const connected = { spotify: Boolean(s?.spotify.connected), youtube: Boolean(s?.google.connected) };
   const configured = { spotify: Boolean(s?.spotify.configured), youtube: Boolean(s?.google.configured) };
   const aiEnabled = Boolean(s?.ai);
-  // 서버에 로그인 설정이 없는 기능은 탭 자체를 숨겨서 링크·붙여넣기만 있는 깔끔한 사이트로 보이게 한다
+  // 연결 설정이 없는 기능은 탭 자체를 숨겨서 링크·붙여넣기만 있는 깔끔한 사이트로 보이게 한다
   const tabs = TABS.filter(
     (t) =>
       (t.key !== "spotify" || configured.spotify) &&
@@ -126,8 +142,7 @@ export default function TjifyApp() {
             ? "youtube"
             : "link");
 
-  // 서버에서 켜진 브랜드는 항상 같이 찾고, 화면에는 고른 브랜드만 보여 준다
-  const brands = useMemo<Brand[]>(() => (s ? BRANDS.filter((b) => s.brands[b]) : []), [s]);
+  const brands = ALL_BRANDS;
   const viewBrands = prefs.brandView === "both" ? brands : brands.filter((b) => b === prefs.brandView);
 
   let libKey: string | null;
@@ -141,6 +156,19 @@ export default function TjifyApp() {
   useEffect(() => {
     if (libKey && libKey !== "paste") void libraryStore.load(libKey);
   }, [libKey]);
+
+  // 로그인 화면에서 돌아왔으면 토큰을 저장하고, 주소에 남은 OAuth 값은 결과 알림으로 바꾼다
+  useEffect(() => {
+    let alive = true;
+    void finishOAuthReturn().then((outcome) => {
+      if (!alive || !outcome) return;
+      const query = outcome.ok ? `connected=${outcome.provider}` : `error=${outcome.error}${outcome.provider ? `&provider=${outcome.provider}` : ""}`;
+      router.replace(`/?${query}`, { scroll: false });
+    });
+    return () => {
+      alive = false;
+    };
+  }, [router]);
 
   // 링크 기록에 플레이리스트 제목을 채워 둔다
   useEffect(() => {
@@ -171,9 +199,11 @@ export default function TjifyApp() {
     matchQueue.setWork(baseTracks, brands);
   }, [baseTracks, brands]);
 
+  const insightKey = anthropicApiKey(settings);
+  const insightModel = settings.anthropicModel ?? "";
   useEffect(() => {
-    insightQueue.setWork(baseTracks, aiEnabled);
-  }, [baseTracks, aiEnabled]);
+    insightQueue.setWork(baseTracks, insightKey, insightModel);
+  }, [baseTracks, insightKey, insightModel]);
 
   const metaByKey = useMemo(() => {
     const map = new Map<string, SongMeta>();
@@ -232,12 +262,11 @@ export default function TjifyApp() {
     setRandom({ track: pool.length ? pool[Math.floor(Math.random() * pool.length)] : null, pool: pool.length });
   };
 
-  const disconnect = async (provider: "spotify" | "google") => {
-    await apiPost(`/api/auth/${provider}/logout`).catch(() => undefined);
+  const disconnect = (provider: "spotify" | "google") => {
+    disconnectAccount(provider);
     libraryStore.forget(provider === "spotify" ? "spotify:" : "youtube:");
     forgetPlaylists(provider === "spotify" ? "spotify" : "youtube");
     if (playlist && (playlist.source === "spotify") === (provider === "spotify")) setPlaylist(null);
-    session.refresh();
   };
 
   const loginError = loginErrorMessage(params.get("error"));
@@ -284,13 +313,6 @@ export default function TjifyApp() {
             ×
           </button>
         </div>
-      )}
-
-      {session.error && <p className="rounded-xl border border-danger/40 bg-danger/10 px-4 py-3 text-sm">서버 상태를 확인하지 못했어요: {session.error}</p>}
-      {s && !s.sessionSecretOk && (configured.spotify || configured.youtube) && (
-        <p className="rounded-xl border border-warn/40 bg-warn/10 px-4 py-3 text-sm">
-          서버에 <code>SESSION_SECRET</code>이 없어서 계정 연결을 쓸 수 없어요. 링크 가져오기와 붙여넣기는 지금도 됩니다.
-        </p>
       )}
 
       {(configured.spotify || configured.youtube) && <ConnectBar session={s} onDisconnect={disconnect} />}
@@ -395,6 +417,8 @@ export default function TjifyApp() {
           </>
         )}
       </main>
+
+      <SettingsPanel />
 
       <AboutSection aiEnabled={aiEnabled} />
 
@@ -591,7 +615,7 @@ function LinkHeader({
   const [copied, setCopied] = useState(false);
   const share = async () => {
     try {
-      await navigator.clipboard.writeText(`${window.location.origin}/?import=${encodeURIComponent(canonicalLinkUrl(link))}`);
+      await navigator.clipboard.writeText(`${siteUrl()}?import=${encodeURIComponent(canonicalLinkUrl(link))}`);
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
     } catch {
@@ -660,20 +684,21 @@ function ConnectPrompt({
         {loading ? (
           <span className="h-11 w-48 animate-pulse rounded-full bg-surface-2" aria-hidden />
         ) : configured ? (
-          <a
-            href={`/api/auth/${provider}/login`}
+          <button
+            type="button"
+            onClick={() => void startLogin(provider)}
             className={`rounded-full px-6 py-3 font-semibold text-black hover:brightness-110 ${isSpotify ? "bg-spotify" : "bg-youtube text-white"}`}
           >
             {name} 연결하기
-          </a>
+          </button>
         ) : (
-          <p className="text-sm text-warn">서버에 {name} 연동 설정이 아직 없어요 (README 참고).</p>
+          <p className="text-sm text-warn">이 사이트에는 아직 {name} 연결 설정이 없어요.</p>
         )}
         <button type="button" onClick={onLink} className="text-sm text-muted underline-offset-2 hover:text-ink hover:underline">
           연결 없이 플레이리스트 링크로 가져오기
         </button>
       </div>
-      <p className="mt-5 text-xs text-muted/80">읽기 권한만 요청하고, 로그인 정보는 이 브라우저의 암호화된 쿠키에만 남아요.</p>
+      <p className="mt-5 text-xs text-muted/80">읽기 권한만 요청하고, 로그인 정보는 이 브라우저에만 저장돼요.</p>
     </div>
   );
 }

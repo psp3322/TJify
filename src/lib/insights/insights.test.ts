@@ -1,7 +1,7 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
-import { DEFAULT_MODEL, estimateSongs, InsightRefusedError, toInsights, type InsightClient } from "./claude";
+import Anthropic from "@anthropic-ai/sdk";
+import { describe, expect, it, vi } from "vitest";
+import { DEFAULT_MODEL, describeInsightError, estimateSongs, InsightRefusedError, toInsights, type InsightClient } from "./claude";
 import { formatViews, popularityScore, singAlongLevel } from "./popularity";
-import { songInsights } from "./service";
 
 // 아래 응답은 구조화 출력 스키마 모양대로 만든 테스트용 데이터다 (실제 Claude 답변 아님)
 function fakeClient(parsed: unknown, stopReason = "end_turn") {
@@ -16,10 +16,6 @@ type OutputSong = Parameters<typeof toInsights>[1]["songs"][number];
 
 const song = (i: number, extra: Partial<Record<keyof OutputSong, unknown>> = {}): OutputSong =>
   ({ i, known: true, difficulty: 3, tags: ["고음"], popularity: 4, tip: "", ...extra }) as OutputSong;
-
-afterEach(() => {
-  vi.unstubAllEnvs();
-});
 
 describe("toInsights", () => {
   it("입력 순서대로 맞추고, 모르는 곡·빠진 곡은 null", () => {
@@ -52,9 +48,8 @@ describe("estimateSongs", () => {
   });
 
   it("폴백이 없는 모델(Haiku 5.5)로 바꾸면 fallbacks를 붙이지 않는다", async () => {
-    vi.stubEnv("ANTHROPIC_MODEL", "claude-haiku-5-5");
     const { client, parse } = fakeClient({ songs: [song(0)] });
-    await estimateSongs([{ key: "k", title: "x", artists: [] }], client);
+    await estimateSongs([{ key: "k", title: "x", artists: [] }], client, "claude-haiku-5-5");
     const params = parse.mock.calls[0][0];
     expect(params.model).toBe("claude-haiku-5-5");
     expect(params).not.toHaveProperty("fallbacks");
@@ -67,18 +62,15 @@ describe("estimateSongs", () => {
   });
 });
 
-describe("songInsights", () => {
-  it("같은 곡은 서버 캐시에서 돌려주고 Claude에 다시 묻지 않는다", async () => {
-    const { client, parse } = fakeClient({ songs: [song(0), song(1, { difficulty: 1 })] });
-    const items = [
-      { key: "a", title: "캐시 테스트 곡 A", artists: ["가수"] },
-      { key: "b", title: "캐시 테스트 곡 B", artists: ["가수"] },
-    ];
-    const first = await songInsights(items, client);
-    const second = await songInsights([{ key: "b2", title: "캐시 테스트 곡 B", artists: ["가수"] }], client);
-    expect(first.map((r) => r.insight?.difficulty)).toEqual([3, 1]);
-    expect(second).toEqual([{ key: "b2", insight: expect.objectContaining({ difficulty: 1 }) }]);
-    expect(parse).toHaveBeenCalledOnce();
+describe("describeInsightError", () => {
+  it("잘못된 키·요청 한도·거절을 화면 문구로 바꾼다", () => {
+    const headers = new Headers({ "retry-after": "12" });
+    expect(describeInsightError(new Anthropic.AuthenticationError(401, undefined, "invalid x-api-key", new Headers())).message).toContain("키가 올바르지 않아요");
+    expect(describeInsightError(new Anthropic.RateLimitError(429, undefined, "rate limited", headers))).toEqual({
+      message: expect.stringContaining("요청 한도"),
+      retryAfterSec: 12,
+    });
+    expect(describeInsightError(new InsightRefusedError()).retryAfterSec).toBeUndefined();
   });
 });
 

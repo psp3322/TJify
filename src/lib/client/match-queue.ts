@@ -2,8 +2,8 @@
 
 import { useSyncExternalStore } from "react";
 import { MATCH_BATCH_SIZE } from "@/lib/constants";
-import type { Brand, MatchRequestItem, MatchResult, Track } from "@/lib/types";
-import { ApiClientError, apiPost } from "./api";
+import { matchTracks } from "@/lib/karaoke/service";
+import type { Brand, MatchRequestItem, Track } from "@/lib/types";
 import { isFresh, mergeResults, pruneStore, trackKey, type MatchStore } from "./match-store";
 import { loadJson, saveJson, STORAGE_KEYS } from "./storage";
 
@@ -15,10 +15,9 @@ export interface QueueSnapshot {
 }
 
 const SERVER_SNAPSHOT: QueueSnapshot = { store: {}, running: false, error: null, inflight: 0 };
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /**
- * 화면에 올라온 곡들의 노래방 번호를 MATCH_BATCH_SIZE개씩 차례로 찾는다.
+ * 화면에 올라온 곡들의 노래방 번호를 MATCH_BATCH_SIZE곡씩 차례로 찾는다 (브라우저에서 노래방 번호 API를 바로 부른다).
  * 결과는 localStorage에 남겨서 다음 방문 때 다시 찾지 않는다.
  */
 class MatchQueue {
@@ -136,16 +135,13 @@ class MatchQueue {
         }
         this.emit();
         try {
-          const { results } = await apiPost<{ results: MatchResult[] }>("/api/karaoke/match", { items: batch, brands: this.brands });
+          // 검색 실패는 곡마다 error로 담겨 오므로, 여기서 잡히는 건 예상하지 못한 오류뿐이다
+          const results = await matchTracks(batch, this.brands);
           this.store = pruneStore(mergeResults(this.store, results));
           this.scheduleSave();
         } catch (error) {
           for (const item of batch) this.attempted.delete(item.key);
-          if (error instanceof ApiClientError && error.status === 429) {
-            await sleep((error.retryAfterSec ?? 15) * 1000);
-          } else {
-            this.error = error instanceof Error ? error.message : "번호를 찾지 못했습니다.";
-          }
+          this.error = error instanceof Error ? error.message : "번호를 찾지 못했습니다.";
         } finally {
           for (const item of batch) this.inflight.delete(item.key);
           this.emit();
