@@ -1,5 +1,8 @@
+"use client";
+
 import type { SongMeta } from "@/lib/client/song-meta";
-import { DIFFICULTY_LABEL, SING_ALONG_LABEL, type SingAlong } from "@/lib/insights/types";
+import { useT } from "@/lib/i18n/react";
+import { difficultyKey, singAlongKey, type SingAlong } from "@/lib/insights/types";
 
 const DIFFICULTY_STYLE: Record<number, string> = {
   1: "border-ok/40 text-ok",
@@ -18,24 +21,25 @@ const SING_ALONG_STYLE: Record<SingAlong, string> = {
 
 /** 목록 한 줄의 난이도·대중성 꼬리표 */
 export function SongBadges({ meta }: { meta: SongMeta }) {
+  const { t } = useT();
   if (meta.difficulty === null && !meta.singAlong) return null;
   return (
     <span className="mt-1 flex flex-wrap gap-1">
       {meta.difficulty !== null && (
         <span
           className={`rounded-full border px-1.5 py-px text-[11px] leading-4 ${DIFFICULTY_STYLE[meta.difficulty]}`}
-          title={meta.difficultyIsMine ? "내가 매긴 난이도" : "Claude가 추정한 난이도"}
+          title={meta.difficultyIsMine ? t("badge.mineTitle") : t("badge.aiTitle")}
         >
-          {DIFFICULTY_LABEL[meta.difficulty]}
-          {meta.difficultyIsMine ? " · 내 평가" : ""}
+          {t(difficultyKey(meta.difficulty))}
+          {meta.difficultyIsMine ? t("badge.mine") : ""}
         </span>
       )}
       {meta.singAlong && (
         <span
           className={`rounded-full border px-1.5 py-px text-[11px] leading-4 ${SING_ALONG_STYLE[meta.singAlong]}`}
-          title={SING_ALONG_LABEL[meta.singAlong].long}
+          title={t(singAlongKey(meta.singAlong, true))}
         >
-          {meta.chart ? `노래방 인기 ${meta.chart[0]}위` : SING_ALONG_LABEL[meta.singAlong].short}
+          {meta.chart ? t("badge.chart", { rank: meta.chart[0] }) : t(singAlongKey(meta.singAlong))}
         </span>
       )}
     </span>

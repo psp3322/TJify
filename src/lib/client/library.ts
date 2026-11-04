@@ -1,6 +1,7 @@
 "use client";
 
 import { UpstreamError } from "@/lib/http";
+import { t } from "@/lib/i18n";
 import * as spotify from "@/lib/sources/spotify";
 import * as youtube from "@/lib/sources/youtube";
 import type { PlaylistSummary, TrackPage } from "@/lib/types";
@@ -26,13 +27,6 @@ export class LibraryError extends Error {
   }
 }
 
-const SPOTIFY_NOT_CONFIGURED = "Spotify 플레이리스트는 Spotify 정책상 로그인 없이 읽을 수 없어요. 곡 목록을 붙여넣기로 넣어 주세요.";
-const SPOTIFY_NOT_CONNECTED =
-  "Spotify 플레이리스트는 Spotify를 연결한 뒤에 가져올 수 있어요. Spotify 정책상 연결한 계정이 만들었거나 공동 작업 중인 플레이리스트만 읽을 수 있어요.";
-const SPOTIFY_FORBIDDEN =
-  "이 플레이리스트는 가져올 수 없어요. Spotify 정책상 연결한 계정이 만들었거나 공동 작업 중인 플레이리스트만 읽을 수 있고, Spotify가 만든 플레이리스트(Today's Top Hits 등)도 막혀 있어요.";
-const YOUTUBE_NO_KEY = "YouTube 재생목록을 가져오려면 YouTube API 키가 필요해요. 아래 '설정'에 내 키를 넣거나 YouTube를 연결해 주세요.";
-
 async function youtubePage(auth: youtube.YouTubeAuth | string, id: string, cursor: string | null): Promise<TrackPage> {
   const [page, title] = await Promise.all([
     youtube.fetchPlaylistItems(auth, id, cursor).then((p) => youtube.withViewCounts(auth, p)),
@@ -53,13 +47,13 @@ async function youtubeLinkPage(id: string, cursor: string | null): Promise<Track
       if (!privateList || !connected) throw error;
     }
   }
-  if (!connected) throw new LibraryError(YOUTUBE_NO_KEY, "no_youtube_key");
+  if (!connected) throw new LibraryError(t("error.libYoutubeNoKey"), "no_youtube_key");
   return withToken("google", (token) => youtubePage(token, id, cursor));
 }
 
 async function spotifyLinkPage(id: string, cursor: string | null): Promise<TrackPage> {
-  if (!isConfigured("spotify")) throw new LibraryError(SPOTIFY_NOT_CONFIGURED, "not_configured");
-  if (!tokenStores.spotify.getSnapshot()) throw new LibraryError(SPOTIFY_NOT_CONNECTED, "not_connected");
+  if (!isConfigured("spotify")) throw new LibraryError(t("error.libSpotifyNoLogin"), "not_configured");
+  if (!tokenStores.spotify.getSnapshot()) throw new LibraryError(t("error.libSpotifyNotConnected"), "not_connected");
   return withToken("spotify", async (token) => {
     try {
       const [page, title] = await Promise.all([
@@ -68,7 +62,9 @@ async function spotifyLinkPage(id: string, cursor: string | null): Promise<Track
       ]);
       return title ? { ...page, title } : page;
     } catch (error) {
-      if (error instanceof UpstreamError && (error.status === 403 || error.status === 404)) throw new UpstreamError(SPOTIFY_FORBIDDEN, error.status);
+      if (error instanceof UpstreamError && (error.status === 403 || error.status === 404)) {
+        throw new UpstreamError(t("error.libSpotifyForbidden"), error.status);
+      }
       throw error;
     }
   });

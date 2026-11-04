@@ -1,14 +1,14 @@
 import type { Metadata, Viewport } from "next";
-import { SITE_DESCRIPTION, SITE_NAME, SITE_TAGLINE } from "@/lib/site";
+import { SITE_DESCRIPTION, SITE_NAME, SITE_TITLE } from "@/lib/site";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: `${SITE_NAME} · 내 플레이리스트 노래방 번호 찾기`,
+  title: SITE_TITLE,
   description: SITE_DESCRIPTION,
   applicationName: SITE_NAME,
   openGraph: {
-    title: `${SITE_NAME} · 내 플레이리스트 노래방 번호 찾기`,
-    description: SITE_TAGLINE,
+    title: SITE_TITLE,
+    description: SITE_DESCRIPTION,
     type: "website",
     locale: "ko_KR",
   },

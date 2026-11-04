@@ -4,6 +4,7 @@ import Image from "next/image";
 import { useEffect, useState } from "react";
 import { fetchPlaylists } from "@/lib/client/library";
 import { describeError } from "@/lib/http";
+import { useT } from "@/lib/i18n/react";
 import type { PlaylistSummary } from "@/lib/types";
 
 export type PlaylistSource = "spotify" | "youtube";
@@ -28,6 +29,7 @@ interface Props {
 
 /** 연결된 서비스의 플레이리스트(재생목록) 목록에서 하나를 고른다 */
 export function PlaylistPicker({ connected, onSelect }: Props) {
+  const { t } = useT();
   const available = (["spotify", "youtube"] as const).filter((s) => connected[s]);
   const [source, setSource] = useState<PlaylistSource | null>(null);
   const active = source && connected[source] ? source : (available[0] ?? null);
@@ -55,7 +57,7 @@ export function PlaylistPicker({ connected, onSelect }: Props) {
   }, [active]);
 
   if (!active) {
-    return <p className="py-10 text-center text-muted">Spotify나 YouTube를 먼저 연결하면 플레이리스트를 고를 수 있어요.</p>;
+    return <p className="py-10 text-center text-muted">{t("picker.needConnect")}</p>;
   }
 
   const items = cache.get(active) ?? (state.source === active ? state.items : null);
@@ -64,7 +66,7 @@ export function PlaylistPicker({ connected, onSelect }: Props) {
   return (
     <div className="space-y-3">
       {available.length > 1 && (
-        <div className="flex gap-2" role="tablist" aria-label="플레이리스트 출처">
+        <div className="flex gap-2" role="tablist" aria-label={t("picker.sourceAria")}>
           {available.map((s) => (
             <button
               key={s}
@@ -80,8 +82,8 @@ export function PlaylistPicker({ connected, onSelect }: Props) {
         </div>
       )}
       {error && <p className="text-sm text-danger">{error}</p>}
-      {!items && !error && <p className="py-6 text-center text-muted">플레이리스트 불러오는 중…</p>}
-      {items && items.length === 0 && <p className="py-6 text-center text-muted">플레이리스트가 없어요.</p>}
+      {!items && !error && <p className="py-6 text-center text-muted">{t("picker.loading")}</p>}
+      {items && items.length === 0 && <p className="py-6 text-center text-muted">{t("picker.empty")}</p>}
       {items && items.length > 0 && (
         <ul className="grid gap-2 sm:grid-cols-2">
           {items.map((p) => (
@@ -98,7 +100,7 @@ export function PlaylistPicker({ connected, onSelect }: Props) {
                 )}
                 <span className="min-w-0">
                   <span className="block truncate font-medium">{p.name}</span>
-                  <span className="block text-xs text-muted">{p.trackCount !== undefined ? `${p.trackCount}곡` : ""}</span>
+                  <span className="block text-xs text-muted">{p.trackCount !== undefined ? t("common.songs", { n: p.trackCount }) : ""}</span>
                 </span>
               </button>
             </li>

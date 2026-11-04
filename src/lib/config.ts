@@ -9,6 +9,11 @@ export const BASE_PATH = (process.env.NEXT_PUBLIC_BASE_PATH ?? "").replace(/\/+$
 export const PUBLIC_CONFIG = {
   /** 공개 YouTube 재생목록을 읽는 API 키. Google Cloud에서 이 사이트 주소에서만 쓰이게 제한해 둔다 */
   youtubeApiKey: process.env.NEXT_PUBLIC_YOUTUBE_API_KEY?.trim() ?? "",
+  /**
+   * 모든 방문자가 쓰는 Gemini API 무료 키 (선택). 공개되는 값이라 결제를 켜지 않은 무료 등급 프로젝트의 키를,
+   * Gemini API와 이 사이트 주소로만 쓰이게 제한해서 넣는다. 최악의 경우 그날 무료 사용량이 바닥날 뿐이다.
+   */
+  geminiApiKey: process.env.NEXT_PUBLIC_GEMINI_API_KEY?.trim() ?? "",
   /** Spotify 앱의 Client ID (PKCE 방식이라 secret은 필요 없다) */
   spotifyClientId: process.env.NEXT_PUBLIC_SPOTIFY_CLIENT_ID?.trim() ?? "",
   /** Google OAuth 웹 클라이언트 ID */

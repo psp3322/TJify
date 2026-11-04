@@ -1,3 +1,5 @@
+import { t } from "@/lib/i18n";
+
 export class UpstreamError extends Error {
   constructor(
     message: string,
@@ -25,12 +27,12 @@ export function isNetworkError(error: unknown): boolean {
   return /fetch failed|failed to fetch|load failed|networkerror|econn|enotfound|etimedout|socket/i.test(error.message);
 }
 
-/** 사용자에게 보여 줄 오류 문구. 네트워크 오류의 영어 메시지를 그대로 내보내지 않는다 */
-export function describeError(error: unknown, target = "서버"): string {
+/** 사용자에게 보여 줄 오류 문구. 브라우저가 내는 영어 네트워크 오류를 그대로 내보내지 않는다. target은 이미 번역한 이름 */
+export function describeError(error: unknown, target: string = t("target.music")): string {
   if (error instanceof UpstreamError) return error.message;
   if (error instanceof Error) {
-    if (error.name === "TimeoutError" || error.name === "AbortError") return `${target} 응답이 너무 늦어요.`;
-    if (isNetworkError(error)) return `${target}에 연결하지 못했어요.`;
+    if (error.name === "TimeoutError" || error.name === "AbortError") return t("error.timeout", { target });
+    if (isNetworkError(error)) return t("error.connect", { target });
     return error.message;
   }
   return String(error);

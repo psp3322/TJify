@@ -1,5 +1,6 @@
 import { TtlCache } from "@/lib/cache";
 import { createCircuit } from "@/lib/circuit";
+import { t } from "@/lib/i18n";
 import { createLimiter } from "@/lib/limiter";
 import type { Brand, KaraokeSong } from "@/lib/types";
 import { searchManana, type MananaSearchKind } from "./manana";
@@ -15,7 +16,7 @@ const cache = new TtlCache<KaraokeSong[]>(4000);
 const ttl = (songs: KaraokeSong[]) => (songs.length > 0 ? 12 * HOUR : 1 * HOUR);
 
 const limit = createLimiter(4);
-const circuit = createCircuit("노래방 번호 검색 서버(Manana)");
+const circuit = createCircuit(() => t("target.karaokeServer"));
 
 const NON_WORD = /[^\p{L}\p{N}]+/gu;
 

@@ -1,16 +1,45 @@
 "use client";
 
 import { useSyncExternalStore } from "react";
+import { t } from "@/lib/i18n";
 import type { InsightClient } from "@/lib/insights/claude";
-import type { InsightRequestItem, SongInsight } from "@/lib/insights/types";
+import type { InsightErrorInfo } from "@/lib/insights/prompt";
+import type { InsightEngine, InsightRequestItem, SongInsight } from "@/lib/insights/types";
 import { trackKey } from "@/lib/track-key";
 import type { Track } from "@/lib/types";
+import type { EngineConfig } from "./settings";
 import { loadJson, saveJson, STORAGE_KEYS } from "./storage";
 
 export interface StoredInsight {
   at: number;
   insight: SongInsight | null;
+  /** 추정한 AI */
+  by?: InsightEngine;
 }
+
+interface Estimator {
+  estimate(items: InsightRequestItem[]): Promise<Array<SongInsight | null>>;
+  describe(error: unknown): InsightErrorInfo;
+}
+
+/** AI별 코드는 그 AI를 쓸 때 처음 불러온다 (Anthropic SDK는 크기가 커서 첫 화면에 넣지 않는다) */
+async function loadEstimator(engine: EngineConfig): Promise<Estimator> {
+  if (engine.provider === "claude") {
+    const claude = await import("@/lib/insights/claude");
+    let client: InsightClient | null = null;
+    return {
+      estimate: (items) => claude.estimateSongs(items, (client ??= claude.createInsightClient(engine.apiKey)), engine.model),
+      describe: claude.describeInsightError,
+    };
+  }
+  const gemini = await import("@/lib/insights/gemini");
+  return {
+    estimate: (items) => gemini.estimateWithGemini(items, engine.apiKey, { model: engine.model }),
+    describe: gemini.describeGeminiError,
+  };
+}
+
+const engineId = (engine: EngineConfig | null) => (engine ? `${engine.provider}|${engine.model}|${engine.apiKey}` : "");
 
 export type InsightStore = Record<string, StoredInsight>;
 
@@ -32,17 +61,16 @@ function isFresh(entry: StoredInsight | undefined): boolean {
 }
 
 /**
- * 화면에 올라온 곡의 난이도·대중성을 BATCH곡씩 차례로 Claude에 물어본다.
- * 방문자가 설정에 Anthropic API 키를 넣었을 때만 돌고, 브라우저에서 API를 바로 부른다.
+ * 화면에 올라온 곡의 난이도·대중성을 BATCH곡씩 차례로 AI(Gemini 또는 Claude)에 물어본다.
+ * 쓸 수 있는 키가 있을 때만 돌고, 브라우저에서 API를 바로 부른다.
  * 결과는 localStorage에 남겨 다음 방문 때 다시 묻지 않는다.
  */
 class InsightQueue {
   private store: InsightStore = {};
   private loaded = false;
   private tracks: Track[] = [];
-  private apiKey = "";
-  private model = "";
-  private client: InsightClient | null = null;
+  private engine: EngineConfig | null = null;
+  private estimator: Promise<Estimator> | null = null;
   private readonly attempted = new Set<string>();
   private error: string | null = null;
   private looping = false;
@@ -65,13 +93,12 @@ class InsightQueue {
 
   getServerSnapshot = () => SERVER_SNAPSHOT;
 
-  /** apiKey가 빈 값이면 멈춘다. 키나 모델을 바꾸면 이전 오류를 지우고 다시 시도한다 */
-  setWork(tracks: Track[], apiKey: string, model: string) {
+  /** engine이 null이면 멈춘다. 쓰는 AI나 키를 바꾸면 이전 오류를 지우고 다시 시도한다 */
+  setWork(tracks: Track[], engine: EngineConfig | null) {
     this.tracks = tracks;
-    if (apiKey !== this.apiKey || model !== this.model) {
-      this.apiKey = apiKey;
-      this.model = model;
-      this.client = null;
+    if (engineId(engine) !== engineId(this.engine)) {
+      this.engine = engine;
+      this.estimator = null;
       this.error = null;
       this.attempted.clear();
       this.emit();
@@ -124,39 +151,38 @@ class InsightQueue {
   }
 
   private async pump() {
-    if (this.looping || !this.apiKey || this.error || typeof window === "undefined") return;
+    if (this.looping || !this.engine || this.error || typeof window === "undefined") return;
     this.ensureLoaded();
     if (this.nextBatch().length === 0) return;
     this.looping = true;
     this.emit();
     try {
-      // Anthropic SDK는 키를 넣은 사람에게만 필요하니 이때 처음 불러온다
-      let claude: typeof import("@/lib/insights/claude");
-      try {
-        claude = await import("@/lib/insights/claude");
-      } catch {
-        this.error = "난이도 추정 기능을 불러오지 못했어요. 새로고침해 주세요.";
-        return;
-      }
-      while (this.apiKey && !this.error) {
+      while (this.engine && !this.error) {
         const batch = this.nextBatch();
         if (batch.length === 0) break;
-        for (const item of batch) this.attempted.add(item.key);
-        const apiKey = this.apiKey;
+        const engine = this.engine;
+        let estimator: Estimator;
         try {
-          this.client ??= claude.createInsightClient(apiKey);
-          const insights = await claude.estimateSongs(batch, this.client, this.model || claude.DEFAULT_MODEL);
-          // 기다리는 사이 키가 바뀌었으면 이 결과는 버린다
-          if (apiKey !== this.apiKey) continue;
+          estimator = await (this.estimator ??= loadEstimator(engine));
+        } catch {
+          this.estimator = null;
+          this.error = t("error.insightLoad");
+          break;
+        }
+        for (const item of batch) this.attempted.add(item.key);
+        try {
+          const insights = await estimator.estimate(batch);
+          // 기다리는 사이 AI나 키가 바뀌었으면 이 결과는 버린다
+          if (engineId(engine) !== engineId(this.engine)) continue;
           const now = Date.now();
           this.store = { ...this.store };
-          batch.forEach((item, i) => (this.store[item.key] = { at: now, insight: insights[i] ?? null }));
+          batch.forEach((item, i) => (this.store[item.key] = { at: now, insight: insights[i] ?? null, by: engine.provider }));
           this.scheduleSave();
         } catch (error) {
           for (const item of batch) this.attempted.delete(item.key);
-          const info = claude.describeInsightError(error);
+          const info = estimator.describe(error);
           if (info.retryAfterSec) await sleep(info.retryAfterSec * 1000);
-          else if (apiKey === this.apiKey) this.error = info.message;
+          else if (engineId(engine) === engineId(this.engine)) this.error = info.message;
         }
         this.emit();
       }

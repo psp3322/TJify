@@ -2,6 +2,7 @@
 
 import { useSyncExternalStore } from "react";
 import { MATCH_BATCH_SIZE } from "@/lib/constants";
+import { t } from "@/lib/i18n";
 import { matchTracks } from "@/lib/karaoke/service";
 import type { Brand, MatchRequestItem, Track } from "@/lib/types";
 import { isFresh, mergeResults, pruneStore, trackKey, type MatchStore } from "./match-store";
@@ -141,7 +142,7 @@ class MatchQueue {
           this.scheduleSave();
         } catch (error) {
           for (const item of batch) this.attempted.delete(item.key);
-          this.error = error instanceof Error ? error.message : "번호를 찾지 못했습니다.";
+          this.error = error instanceof Error ? error.message : t("match.unexpected");
         } finally {
           for (const item of batch) this.inflight.delete(item.key);
           this.emit();

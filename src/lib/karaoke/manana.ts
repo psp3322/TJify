@@ -1,4 +1,5 @@
 import { fetchWithRetry, UpstreamError } from "@/lib/http";
+import { t } from "@/lib/i18n";
 import type { Brand, KaraokeSong } from "@/lib/types";
 
 /**
@@ -79,13 +80,13 @@ async function getJson(url: string, options: MananaSearchOptions & { headers?: H
     retries: 1,
   });
   if (res.status === 404) return null;
-  if (!res.ok) throw new UpstreamError(`노래방 번호 검색 실패 (HTTP ${res.status})`, res.status);
+  if (!res.ok) throw new UpstreamError(t("error.karaokeHttp", { status: res.status }), res.status);
   const body = await res.text();
-  if (body.trimStart().startsWith("<")) throw new UpstreamError("노래방 번호 검색 서버가 점검 중인 것 같아요.");
+  if (body.trimStart().startsWith("<")) throw new UpstreamError(t("error.karaokeMaintenance"));
   try {
     return JSON.parse(body);
   } catch {
-    throw new UpstreamError("노래방 번호 검색 결과를 읽지 못했어요.");
+    throw new UpstreamError(t("error.karaokeParse"));
   }
 }
 

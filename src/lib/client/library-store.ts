@@ -2,6 +2,7 @@
 
 import { useSyncExternalStore } from "react";
 import { describeError } from "@/lib/http";
+import { t } from "@/lib/i18n";
 import type { Track, TrackPage } from "@/lib/types";
 import { libraryLoader } from "./library";
 
@@ -69,7 +70,7 @@ export const libraryStore = {
         tracks,
         total,
         title,
-        error: describeError(error, "음악 서비스"),
+        error: describeError(error, t("target.music")),
       });
     }
   },

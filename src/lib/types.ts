@@ -23,11 +23,6 @@ export type Brand = "tj" | "ky";
 
 export const BRANDS: readonly Brand[] = ["tj", "ky"] as const;
 
-export const BRAND_LABEL: Record<Brand, string> = {
-  tj: "TJ",
-  ky: "금영",
-};
-
 /** 노래방 기기에 등록된 곡 하나 */
 export interface KaraokeSong {
   brand: Brand;
@@ -87,7 +82,7 @@ export interface SiteStatus {
   google: ProviderStatus;
   /** 공개 YouTube 재생목록을 읽을 API 키가 있는지 (사이트에 넣어 둔 키나 설정에 넣은 내 키) */
   youtubeApiKey: boolean;
-  /** 설정에 Anthropic API 키를 넣어 난이도·대중성 추정을 쓸 수 있는지 */
+  /** 난이도·대중성 추정에 쓸 AI 키가 있는지 (사이트의 Gemini 무료 키, 내 Gemini 키, 내 Anthropic 키 중 하나) */
   ai: boolean;
 }
 

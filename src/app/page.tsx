@@ -17,7 +17,7 @@ function Shell() {
         <h1 className="text-2xl font-black tracking-tight">
           TJify<span className="text-accent">.</span>
         </h1>
-        <p className="text-sm text-muted">내 플레이리스트를 노래방 번호로</p>
+        <p className="text-sm text-muted">내 플레이리스트를 노래방 번호로 · Your playlists as karaoke numbers</p>
       </div>
       <div className="h-9 w-72 animate-pulse rounded-full bg-surface" />
       <div className="h-40 animate-pulse rounded-2xl bg-surface" />

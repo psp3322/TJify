@@ -1,5 +1,6 @@
 import { AuthExpiredError } from "@/lib/auth/errors";
 import { UpstreamError } from "@/lib/http";
+import { t } from "@/lib/i18n";
 import { parseVideoTitle } from "@/lib/text/youtube-title";
 import type { PlaylistSummary, Track, TrackPage } from "@/lib/types";
 
@@ -116,21 +117,13 @@ async function youtubeGet<T>(auth: YouTubeAuth | string, path: string, params: R
     const reason = body?.error?.errors?.[0]?.reason;
     const detail = body?.error?.details?.find((d) => d.reason)?.reason;
     // 키 자체의 문제는 재생목록 문제보다 먼저 알려 준다 (키 제한에 걸려도 reason은 "forbidden"으로 온다)
-    if (detail === "API_KEY_INVALID") throw new UpstreamError("YouTube API 키가 올바르지 않아요. 설정에서 키를 확인해 주세요.", 503);
-    if (detail === "API_KEY_HTTP_REFERRER_BLOCKED") {
-      throw new UpstreamError("이 사이트 주소에서는 YouTube API 키를 쓸 수 없게 막혀 있어요. Google Cloud에서 키의 웹사이트 제한에 이 주소를 넣어 주세요.", 503);
-    }
-    if (detail === "API_KEY_SERVICE_BLOCKED" || detail === "SERVICE_DISABLED") {
-      throw new UpstreamError("이 API 키로는 YouTube Data API를 쓸 수 없어요. Google Cloud에서 YouTube Data API v3를 켜 주세요.", 503);
-    }
-    if (reason === "quotaExceeded") throw new UpstreamError("YouTube API 일일 할당량을 다 썼어요. 내일 다시 시도하거나 설정에 내 API 키를 넣어 주세요.", 429);
-    if (reason === "playlistNotFound") {
-      throw new UpstreamError("재생목록을 찾을 수 없어요. 비공개 재생목록이나 YouTube Music 자동 믹스는 가져올 수 없어요.", 404);
-    }
-    if (reason === "playlistItemsNotAccessible" || reason === "forbidden") {
-      throw new UpstreamError("비공개 재생목록이라 볼 수 없어요. 재생목록을 '공개'나 '일부 공개'로 바꾸면 가져올 수 있어요.", 403);
-    }
-    throw new UpstreamError(`YouTube API 오류: ${body?.error?.message ?? `HTTP ${res.status}`}`, res.status);
+    if (detail === "API_KEY_INVALID") throw new UpstreamError(t("error.youtubeKeyInvalid"), 503);
+    if (detail === "API_KEY_HTTP_REFERRER_BLOCKED") throw new UpstreamError(t("error.youtubeReferrer"), 503);
+    if (detail === "API_KEY_SERVICE_BLOCKED" || detail === "SERVICE_DISABLED") throw new UpstreamError(t("error.youtubeServiceOff"), 503);
+    if (reason === "quotaExceeded") throw new UpstreamError(t("error.youtubeQuota"), 429);
+    if (reason === "playlistNotFound") throw new UpstreamError(t("error.youtubeNotFound"), 404);
+    if (reason === "playlistItemsNotAccessible" || reason === "forbidden") throw new UpstreamError(t("error.youtubePrivate"), 403);
+    throw new UpstreamError(t("error.youtubeHttp", { detail: body?.error?.message ?? `HTTP ${res.status}` }), res.status);
   }
   return (await res.json()) as T;
 }
@@ -171,7 +164,7 @@ export async function fetchPlaylists(token: string): Promise<PlaylistSummary[]> 
     for (const p of res.items ?? []) {
       out.push({
         id: p.id,
-        name: p.snippet?.title ?? "(이름 없음)",
+        name: p.snippet?.title ?? t("common.untitled"),
         imageUrl: thumb(p.snippet?.thumbnails),
         trackCount: p.contentDetails?.itemCount,
         owner: p.snippet?.channelTitle,
