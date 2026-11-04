@@ -1,3 +1,4 @@
+import type { Lang } from "@/lib/i18n";
 import type { SingAlong } from "./types";
 
 export interface PopularitySignals {
@@ -45,8 +46,9 @@ export function popularityScore(signals: PopularitySignals): number {
   return level ? ORDER.indexOf(level) + 1 : -1;
 }
 
-/** "1.2억회", "350만회" 같은 한국식 조회수 표기 */
-export function formatViews(views: number): string {
+/** 조회수 표기. 한국어는 "1.2억회", "350만회", 영어는 "150M views" */
+export function formatViews(views: number, lang: Lang = "ko"): string {
+  if (lang === "en") return `${new Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 1 }).format(views)} views`;
   if (views >= 100_000_000) return `${(views / 100_000_000).toFixed(views >= 1_000_000_000 ? 0 : 1).replace(/\.0$/, "")}억회`;
   if (views >= 10_000) return `${Math.round(views / 10_000).toLocaleString("ko-KR")}만회`;
   return `${views.toLocaleString("ko-KR")}회`;

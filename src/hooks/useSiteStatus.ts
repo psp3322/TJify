@@ -2,7 +2,7 @@
 
 import { useSyncExternalStore } from "react";
 import { isConfigured, tokenStores } from "@/lib/client/auth";
-import { anthropicApiKey, settingsStore, youtubeApiKey } from "@/lib/client/settings";
+import { insightEngine, settingsStore, youtubeApiKey } from "@/lib/client/settings";
 import { useStoredValue } from "@/lib/client/stored-value";
 import type { SiteStatus } from "@/lib/types";
 
@@ -28,6 +28,6 @@ export function useSiteStatus(): SiteStatus | null {
     spotify: { configured: isConfigured("spotify"), connected: Boolean(spotify), ...(spotify?.displayName ? { displayName: spotify.displayName } : {}) },
     google: { configured: isConfigured("google"), connected: Boolean(google), ...(google?.displayName ? { displayName: google.displayName } : {}) },
     youtubeApiKey: Boolean(youtubeApiKey(settings)),
-    ai: Boolean(anthropicApiKey(settings)),
+    ai: insightEngine(settings) !== null,
   };
 }

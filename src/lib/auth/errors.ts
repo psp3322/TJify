@@ -1,5 +1,9 @@
+import { t, type MessageKey } from "@/lib/i18n";
+
+const PROVIDER_NAME = { spotify: "Spotify", google: "YouTube" } as const;
+
 export class AuthExpiredError extends Error {
-  constructor(message = "로그인이 만료됐습니다. 다시 연결해 주세요.") {
+  constructor(message = t("error.authExpired")) {
     super(message);
     this.name = "AuthExpiredError";
   }
@@ -7,14 +11,14 @@ export class AuthExpiredError extends Error {
 
 export class NotConfiguredError extends Error {
   constructor(provider: "spotify" | "google") {
-    super(`이 사이트에는 아직 ${provider === "spotify" ? "Spotify" : "YouTube"} 연결 설정이 없어요.`);
+    super(t("error.notConfigured", { provider: PROVIDER_NAME[provider] }));
     this.name = "NotConfiguredError";
   }
 }
 
 export class NotConnectedError extends Error {
   constructor(provider: "spotify" | "google") {
-    super(`${provider === "spotify" ? "Spotify" : "YouTube"} 계정이 연결돼 있지 않아요.`);
+    super(t("error.notConnected", { provider: PROVIDER_NAME[provider] }));
     this.name = "NotConnectedError";
   }
 }
@@ -23,17 +27,12 @@ export class NotConnectedError extends Error {
  * OAuth가 끝나고 첫 화면으로 돌아갈 때 주소에 붙이는 오류 코드.
  * 문구 대신 코드만 넘겨서, 누군가 주소에 임의의 문장을 넣어 화면에 띄우지 못하게 한다.
  */
-export const LOGIN_ERRORS = {
-  access_denied: "연결을 취소했어요.",
-  state_mismatch: "로그인 확인 값이 맞지 않아요. 처음부터 다시 연결해 주세요.",
-  not_configured: "이 사이트에는 아직 연결 설정이 없어요.",
-  network: "로그인 서버에 연결하지 못했어요. 잠시 뒤 다시 시도해 주세요.",
-  failed: "연결에 실패했어요. 다시 시도해 주세요.",
-} as const;
+export const LOGIN_ERROR_CODES = ["access_denied", "state_mismatch", "not_configured", "network", "failed"] as const;
 
-export type LoginErrorCode = keyof typeof LOGIN_ERRORS;
+export type LoginErrorCode = (typeof LOGIN_ERROR_CODES)[number];
 
-export function loginErrorMessage(code: string | null): string | null {
+export function loginErrorMessage(code: string | null, translate: (key: MessageKey) => string = t): string | null {
   if (!code) return null;
-  return code in LOGIN_ERRORS ? LOGIN_ERRORS[code as LoginErrorCode] : LOGIN_ERRORS.failed;
+  const known = (LOGIN_ERROR_CODES as readonly string[]).includes(code) ? (code as LoginErrorCode) : "failed";
+  return translate(`login.${known}`);
 }

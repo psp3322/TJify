@@ -4,6 +4,7 @@ import { AuthExpiredError, NotConfiguredError, NotConnectedError, type LoginErro
 import { codeChallenge, randomToken } from "@/lib/auth/pkce";
 import { PUBLIC_CONFIG, siteUrl } from "@/lib/config";
 import { isNetworkError, UpstreamError } from "@/lib/http";
+import { t } from "@/lib/i18n";
 import { fetchDisplayName } from "@/lib/sources/spotify";
 import { fetchChannelName } from "@/lib/sources/youtube";
 import { STORAGE_KEYS } from "./storage";
@@ -151,7 +152,7 @@ async function requestSpotifyToken(body: Record<string, string>, previous?: Stor
   const json = (await res.json().catch(() => ({}))) as TokenJson;
   if (!res.ok || !json.access_token) {
     if (json.error === "invalid_grant") throw new AuthExpiredError();
-    throw new UpstreamError(`Spotify 토큰 발급 실패: ${json.error_description ?? json.error ?? `HTTP ${res.status}`}`, res.status);
+    throw new UpstreamError(t("error.spotifyToken", { detail: json.error_description ?? json.error ?? `HTTP ${res.status}` }), res.status);
   }
   return {
     accessToken: json.access_token,
@@ -198,7 +199,7 @@ const refreshing = new Map<Provider, Promise<StoredToken>>();
 
 function expire(provider: Provider): never {
   tokenStores[provider].set(null);
-  throw new AuthExpiredError(`${provider === "spotify" ? "Spotify" : "YouTube"} 로그인이 만료됐어요. 다시 연결해 주세요.`);
+  throw new AuthExpiredError(t("error.authExpiredProvider", { provider: provider === "spotify" ? "Spotify" : "YouTube" }));
 }
 
 async function refresh(provider: Provider, current: StoredToken): Promise<StoredToken> {

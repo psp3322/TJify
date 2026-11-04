@@ -10,7 +10,7 @@ import { useTjChart } from "@/lib/client/chart-store";
 import { insightQueue, useInsights } from "@/lib/client/insight-queue";
 import { matchQueue, useMatchQueue } from "@/lib/client/match-queue";
 import { hasNumber, resolveNumber, trackKey, type MatchStore, type OverrideStore } from "@/lib/client/match-store";
-import { anthropicApiKey, settingsStore } from "@/lib/client/settings";
+import { insightEngine, settingsStore } from "@/lib/client/settings";
 import { songMeta, type SongMeta } from "@/lib/client/song-meta";
 import {
   myDifficultyStore,
@@ -27,11 +27,12 @@ import {
 import { useStoredValue } from "@/lib/client/stored-value";
 import { siteUrl } from "@/lib/config";
 import { MATCHER_VERSION } from "@/lib/constants";
+import { setLang, type Lang, type MessageKey, type Translate } from "@/lib/i18n";
+import { useT } from "@/lib/i18n/react";
 import { canonicalLinkUrl, isPlaylistLink, parsePlaylistLink, type PlaylistLink } from "@/lib/playlist-link";
 import { compact } from "@/lib/text/normalize";
 import { parsePastedList } from "@/lib/text/paste-import";
 import { BRANDS, type Brand, type Track } from "@/lib/types";
-import { SITE_TAGLINE } from "@/lib/site";
 import { AboutSection } from "./AboutSection";
 import { ConnectBar } from "./ConnectBar";
 import { LinkImport } from "./LinkImport";
@@ -45,12 +46,12 @@ import { TrackSheet } from "./TrackSheet";
 
 type TabKey = "link" | "spotify" | "youtube" | "playlists" | "paste";
 
-const TABS: Array<{ key: TabKey; label: string }> = [
-  { key: "link", label: "링크로 가져오기" },
-  { key: "spotify", label: "Spotify 좋아요" },
-  { key: "youtube", label: "YouTube 좋아요" },
-  { key: "playlists", label: "내 플레이리스트" },
-  { key: "paste", label: "붙여넣기" },
+const TABS: Array<{ key: TabKey; label: MessageKey }> = [
+  { key: "link", label: "tab.link" },
+  { key: "spotify", label: "tab.spotify" },
+  { key: "youtube", label: "tab.youtube" },
+  { key: "playlists", label: "tab.playlists" },
+  { key: "paste", label: "tab.paste" },
 ];
 
 const RECENT_MS = 14 * 24 * 60 * 60 * 1000;
@@ -93,6 +94,7 @@ function availableIn(key: string, brands: Brand[], store: MatchStore, overrides:
 }
 
 export default function TjifyApp() {
+  const { t, lang } = useT();
   const s = useSiteStatus();
   const settings = useStoredValue(settingsStore);
   const prefs = useStoredValue(prefsStore);
@@ -199,11 +201,15 @@ export default function TjifyApp() {
     matchQueue.setWork(baseTracks, brands);
   }, [baseTracks, brands]);
 
-  const insightKey = anthropicApiKey(settings);
-  const insightModel = settings.anthropicModel ?? "";
+  const engine = useMemo(() => insightEngine(settings), [settings]);
   useEffect(() => {
-    insightQueue.setWork(baseTracks, insightKey, insightModel);
-  }, [baseTracks, insightKey, insightModel]);
+    insightQueue.setWork(baseTracks, engine);
+  }, [baseTracks, engine]);
+
+  // 화면 언어를 html lang에도 맞춰 둔다 (읽어 주기 프로그램과 번역기가 참고한다)
+  useEffect(() => {
+    document.documentElement.lang = lang;
+  }, [lang]);
 
   const metaByKey = useMemo(() => {
     const map = new Map<string, SongMeta>();
@@ -269,12 +275,12 @@ export default function TjifyApp() {
     if (playlist && (playlist.source === "spotify") === (provider === "spotify")) setPlaylist(null);
   };
 
-  const loginError = loginErrorMessage(params.get("error"));
+  const loginError = loginErrorMessage(params.get("error"), t);
   const providerName = (p: string | null) => (p === "spotify" ? "Spotify" : "YouTube");
   const notice = loginError
     ? { tone: "error" as const, text: `${providerName(params.get("provider"))}: ${loginError}` }
     : justConnected
-      ? { tone: "ok" as const, text: `${providerName(justConnected)} 계정을 연결했어요.` }
+      ? { tone: "ok" as const, text: t("notice.connected", { provider: providerName(justConnected) }) }
       : null;
 
   const anyConnected = connected.spotify || connected.youtube;
@@ -287,9 +293,12 @@ export default function TjifyApp() {
           <h1 className="text-2xl font-black tracking-tight">
             TJify<span className="text-accent">.</span>
           </h1>
-          <p className="text-sm text-muted">{SITE_TAGLINE}</p>
+          <p className="text-sm text-muted">{t("site.tagline")}</p>
         </div>
-        <BrandToggle value={prefs.brandView} brands={brands} onChange={(brandView) => updatePrefs({ brandView })} />
+        <div className="flex items-center gap-2">
+          <BrandToggle t={t} value={prefs.brandView} brands={brands} onChange={(brandView) => updatePrefs({ brandView })} />
+          <LangToggle t={t} lang={lang} />
+        </div>
       </header>
 
       {notice && (
@@ -308,7 +317,7 @@ export default function TjifyApp() {
               router.replace(importParam ? `/?import=${encodeURIComponent(importParam)}` : "/", { scroll: false });
             }}
             className="text-muted hover:text-ink"
-            aria-label="알림 닫기"
+            aria-label={t("notice.dismiss")}
           >
             ×
           </button>
@@ -317,20 +326,20 @@ export default function TjifyApp() {
 
       {(configured.spotify || configured.youtube) && <ConnectBar session={s} onDisconnect={disconnect} />}
 
-      <nav aria-label="목록 고르기">
+      <nav aria-label={t("tab.navAria")}>
         <div className="flex flex-wrap gap-1.5" role="tablist">
-          {tabs.map((t) => (
+          {tabs.map((item) => (
             <button
-              key={t.key}
+              key={item.key}
               type="button"
               role="tab"
-              aria-selected={tab === t.key}
-              onClick={() => setTabChoice(t.key)}
+              aria-selected={tab === item.key}
+              onClick={() => setTabChoice(item.key)}
               className={`shrink-0 rounded-full px-3.5 py-1.5 text-sm transition-colors ${
-                tab === t.key ? "bg-ink font-semibold text-bg" : "text-muted hover:bg-surface hover:text-ink"
+                tab === item.key ? "bg-ink font-semibold text-bg" : "text-muted hover:bg-surface hover:text-ink"
               }`}
             >
-              {t.label}
+              {t(item.label)}
             </button>
           ))}
         </div>
@@ -342,16 +351,17 @@ export default function TjifyApp() {
             {!activeLink && !anyConnected && (
               <div className="space-y-1">
                 <p className="text-lg font-bold leading-snug">
-                  플레이리스트 링크만 넣으면
+                  {t("hero.line1")}
                   <br />
-                  노래방 번호를 찾아 드려요.
+                  {t("hero.line2")}
                 </p>
-                <p className="text-sm text-muted">TJ·금영 번호와 함께 곡마다 난이도, 다 같이 부를 수 있는 곡인지도 보여 줘요.</p>
+                <p className="text-sm text-muted">{t("hero.sub")}</p>
               </div>
             )}
             <LinkImport session={s} onImport={openLink} />
             {activeLink && (
               <LinkHeader
+                t={t}
                 link={activeLink}
                 title={library.title}
                 onReload={() => libKey && libraryStore.load(libKey, true)}
@@ -362,16 +372,16 @@ export default function TjifyApp() {
           </>
         )}
         {tab === "spotify" && !connected.spotify && (
-          <ConnectPrompt provider="spotify" configured={s?.spotify.configured} loading={!s} anyConnected={anyConnected} onLink={() => setTabChoice("link")} />
+          <ConnectPrompt t={t} provider="spotify" configured={s?.spotify.configured} loading={!s} anyConnected={anyConnected} onLink={() => setTabChoice("link")} />
         )}
         {tab === "youtube" && !connected.youtube && (
-          <ConnectPrompt provider="google" configured={s?.google.configured} loading={!s} anyConnected={anyConnected} onLink={() => setTabChoice("link")} />
+          <ConnectPrompt t={t} provider="google" configured={s?.google.configured} loading={!s} anyConnected={anyConnected} onLink={() => setTabChoice("link")} />
         )}
         {tab === "playlists" &&
           (playlist ? (
             <div className="flex items-center gap-2">
               <button type="button" onClick={() => setPlaylist(null)} className="rounded-full border border-line px-3 py-1 text-sm text-muted hover:text-ink">
-                ← 목록
+                {t("picker.back")}
               </button>
               <h2 className="truncate font-semibold">{playlist.name}</h2>
             </div>
@@ -386,6 +396,7 @@ export default function TjifyApp() {
           <>
             {(library.tracks.length > 0 || library.status === "loading") && (
               <Toolbar
+                t={t}
                 query={query}
                 onQuery={setQuery}
                 onlyAvailable={prefs.onlyAvailable}
@@ -396,13 +407,20 @@ export default function TjifyApp() {
                 onRandom={pickRandom}
               />
             )}
-            <LibraryStatus status={library.status} loaded={library.tracks.length} total={library.total} error={library.error} onRetry={() => libKey && libraryStore.load(libKey, true)} />
+            <LibraryStatus
+              t={t}
+              status={library.status}
+              loaded={library.tracks.length}
+              total={library.total}
+              error={library.error}
+              onRetry={() => libKey && libraryStore.load(libKey, true)}
+            />
             <MatchProgress done={progress.done} failed={progress.failed} total={progress.total} running={queue.running} error={queue.error} />
             {insightProgress && insightProgress.total > 0 && (
-              <InsightStatus done={insightProgress.done} total={insightProgress.total} error={insights.error} />
+              <InsightStatus t={t} done={insightProgress.done} total={insightProgress.total} error={insights.error} />
             )}
             {rows.length === 0 && library.status === "done" && (
-              <p className="py-10 text-center text-muted">{baseTracks.length === 0 ? "곡이 없어요." : "조건에 맞는 곡이 없어요."}</p>
+              <p className="py-10 text-center text-muted">{baseTracks.length === 0 ? t("list.noSongs") : t("list.noMatch")}</p>
             )}
             <TrackList
               key={`${libKey}|${query}|${prefs.sort}|${prefs.onlyAvailable}|${prefs.onlySingAlong}`}
@@ -423,7 +441,7 @@ export default function TjifyApp() {
       <AboutSection aiEnabled={aiEnabled} />
 
       <footer className="border-t border-line pt-4 text-xs leading-relaxed text-muted">
-        TJ미디어·금영과는 관계없는 개인 프로젝트입니다. 번호는 노래방 기기 모델이나 업데이트 시점에 따라 실제와 다를 수 있어요.{" "}
+        {t("footer.disclaimer")}{" "}
         <a href="https://github.com/psp3322/TJify" target="_blank" rel="noreferrer" className="underline underline-offset-2">
           GitHub
         </a>
@@ -458,15 +476,29 @@ export default function TjifyApp() {
   );
 }
 
-function BrandToggle({ value, brands, onChange }: { value: BrandView; brands: Brand[]; onChange(v: BrandView): void }) {
+function LangToggle({ t, lang }: { t: Translate; lang: Lang }) {
+  return (
+    <button
+      type="button"
+      onClick={() => setLang(lang === "ko" ? "en" : "ko")}
+      aria-label={t("lang.switchAria")}
+      lang={lang === "ko" ? "en" : "ko"}
+      className="rounded-full border border-line px-3 py-1 text-sm text-muted hover:text-ink"
+    >
+      {t("lang.switch")}
+    </button>
+  );
+}
+
+function BrandToggle({ t, value, brands, onChange }: { t: Translate; value: BrandView; brands: Brand[]; onChange(v: BrandView): void }) {
   if (brands.length < 2) return null;
   const options: Array<{ v: BrandView; label: string }> = [
-    { v: "both", label: "둘 다" },
-    { v: "tj", label: "TJ" },
-    { v: "ky", label: "금영" },
+    { v: "both", label: t("brand.both") },
+    { v: "tj", label: t("brand.tj") },
+    { v: "ky", label: t("brand.ky") },
   ];
   return (
-    <div className="flex rounded-full border border-line p-0.5 text-sm" role="radiogroup" aria-label="노래방 브랜드">
+    <div className="flex rounded-full border border-line p-0.5 text-sm" role="radiogroup" aria-label={t("brand.groupAria")}>
       {options.map((o) => (
         <button
           key={o.v}
@@ -484,6 +516,7 @@ function BrandToggle({ value, brands, onChange }: { value: BrandView; brands: Br
 }
 
 function Toolbar(props: {
+  t: Translate;
   query: string;
   onQuery(q: string): void;
   onlyAvailable: boolean;
@@ -493,6 +526,7 @@ function Toolbar(props: {
   showMusicFilter: boolean;
   onRandom(): void;
 }) {
+  const { t } = props;
   return (
     <div className="flex flex-col gap-2">
       <div className="flex gap-2">
@@ -500,42 +534,42 @@ function Toolbar(props: {
           type="search"
           value={props.query}
           onChange={(e) => props.onQuery(e.target.value)}
-          placeholder="제목·가수로 찾기"
-          aria-label="목록에서 찾기"
+          placeholder={t("toolbar.search")}
+          aria-label={t("toolbar.searchAria")}
           className="min-w-0 flex-1 rounded-xl border border-line bg-surface px-3 py-2 text-sm outline-none focus:border-muted"
         />
         <button type="button" onClick={props.onRandom} className="shrink-0 rounded-xl bg-accent px-3 py-2 text-sm font-semibold text-black hover:brightness-110">
-          🎲 뭐 부르지?
+          {t("toolbar.random")}
         </button>
       </div>
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-muted">
         <label className="flex items-center gap-1.5">
           <input type="checkbox" checked={props.onlyAvailable} onChange={(e) => updatePrefs({ onlyAvailable: e.target.checked })} className="accent-accent" />
-          번호 있는 곡만
+          {t("toolbar.onlyAvailable")}
         </label>
         <label className="flex items-center gap-1.5">
           <input type="checkbox" checked={props.onlySingAlong} onChange={(e) => updatePrefs({ onlySingAlong: e.target.checked })} className="accent-accent" />
-          다 같이 부를 노래만
+          {t("toolbar.onlySingAlong")}
         </label>
         {props.showMusicFilter && (
           <label className="flex items-center gap-1.5">
             <input type="checkbox" checked={props.musicOnly} onChange={(e) => updatePrefs({ musicOnly: e.target.checked })} className="accent-accent" />
-            음악 영상만
+            {t("toolbar.musicOnly")}
           </label>
         )}
         <label className="ml-auto flex items-center gap-1.5">
-          정렬
+          {t("toolbar.sort")}
           <select
             value={props.sort}
             onChange={(e) => updatePrefs({ sort: e.target.value as SortMode })}
             className="rounded-lg border border-line bg-surface px-2 py-1 text-ink"
           >
-            <option value="default">추가한 순서</option>
-            <option value="title">제목</option>
-            <option value="artist">가수</option>
-            <option value="easy">쉬운 순</option>
-            <option value="hard">어려운 순</option>
-            <option value="popular">유명한 순</option>
+            <option value="default">{t("sort.default")}</option>
+            <option value="title">{t("sort.title")}</option>
+            <option value="artist">{t("sort.artist")}</option>
+            <option value="easy">{t("sort.easy")}</option>
+            <option value="hard">{t("sort.hard")}</option>
+            <option value="popular">{t("sort.popular")}</option>
           </select>
         </label>
       </div>
@@ -543,13 +577,13 @@ function Toolbar(props: {
   );
 }
 
-function InsightStatus({ done, total, error }: { done: number; total: number; error: string | null }) {
+function InsightStatus({ t, done, total, error }: { t: Translate; done: number; total: number; error: string | null }) {
   if (error) {
     return (
       <p className="flex flex-wrap items-center gap-2 text-xs text-danger/90">
-        <span>난이도 추정이 멈췄어요: {error}</span>
+        <span>{t("insight.stopped", { error })}</span>
         <button type="button" onClick={() => insightQueue.retry()} className="shrink-0 rounded-full border border-line px-2 py-0.5 text-muted hover:text-ink">
-          다시 시도
+          {t("common.retry")}
         </button>
       </p>
     );
@@ -557,18 +591,20 @@ function InsightStatus({ done, total, error }: { done: number; total: number; er
   if (done >= total) return null;
   return (
     <p className="text-xs text-muted">
-      난이도·대중성 살펴보는 중 {done}/{total}
+      {t("insight.progress", { done, total })}
     </p>
   );
 }
 
 function LibraryStatus({
+  t,
   status,
   loaded,
   total,
   error,
   onRetry,
 }: {
+  t: Translate;
   status: "idle" | "loading" | "done" | "error";
   loaded: number;
   total?: number;
@@ -578,8 +614,7 @@ function LibraryStatus({
   if (status === "loading") {
     return (
       <p className="text-xs text-muted">
-        곡 목록 불러오는 중… {loaded}
-        {total ? ` / ${total}` : ""}
+        {t("library.loading", { count: total ? `${loaded} / ${total}` : loaded })}
       </p>
     );
   }
@@ -588,7 +623,7 @@ function LibraryStatus({
       <div className="flex flex-wrap items-center gap-2 rounded-xl border border-danger/40 bg-danger/10 px-3 py-2 text-sm">
         <span className="flex-1">{error}</span>
         <button type="button" onClick={onRetry} className="rounded-full border border-line px-3 py-1 hover:bg-surface-2">
-          다시 불러오기
+          {t("library.reload")}
         </button>
       </div>
     );
@@ -600,12 +635,14 @@ const LINK_SOURCE_LABEL = { spotify: "Spotify", youtube: "YouTube" } as const;
 
 /** 링크로 연 플레이리스트의 제목줄 */
 function LinkHeader({
+  t,
   link,
   title,
   loading,
   failed,
   onReload,
 }: {
+  t: Translate;
   link: PlaylistLink;
   title?: string;
   loading: boolean;
@@ -625,8 +662,10 @@ function LinkHeader({
   return (
     <div className="space-y-2">
       <div className="min-w-0">
-        <p className="text-xs text-muted">{LINK_SOURCE_LABEL[link.source]} 플레이리스트</p>
-        <h2 className="truncate text-lg font-semibold">{title ?? (loading ? "불러오는 중…" : failed ? "불러오지 못했어요" : "제목 없음")}</h2>
+        <p className="text-xs text-muted">{t("link.playlistOf", { source: LINK_SOURCE_LABEL[link.source] })}</p>
+        <h2 className="truncate text-lg font-semibold">
+          {title ?? (loading ? t("linkHeader.loading") : failed ? t("linkHeader.failed") : t("linkHeader.untitled"))}
+        </h2>
       </div>
       <div className="flex flex-wrap gap-2">
         <a
@@ -635,11 +674,11 @@ function LinkHeader({
           rel="noreferrer"
           className="rounded-full border border-line px-3 py-1 text-sm text-muted hover:text-ink"
         >
-          원본 열기 ↗
+          {t("linkHeader.open")}
         </a>
         {link.source === "youtube" && (
           <button type="button" onClick={share} className="rounded-full border border-line px-3 py-1 text-sm text-muted hover:text-ink">
-            {copied ? "주소 복사됨" : "이 목록 공유"}
+            {copied ? t("linkHeader.copied") : t("linkHeader.share")}
           </button>
         )}
         <button
@@ -648,7 +687,7 @@ function LinkHeader({
           disabled={loading}
           className="rounded-full border border-line px-3 py-1 text-sm text-muted hover:text-ink disabled:opacity-50"
         >
-          새로 불러오기
+          {t("linkHeader.reload")}
         </button>
       </div>
     </div>
@@ -656,12 +695,14 @@ function LinkHeader({
 }
 
 function ConnectPrompt({
+  t,
   provider,
   configured,
   loading,
   anyConnected,
   onLink,
 }: {
+  t: Translate;
   provider: "spotify" | "google";
   configured?: boolean;
   loading: boolean;
@@ -673,13 +714,9 @@ function ConnectPrompt({
   return (
     <div className="rounded-2xl border border-line bg-surface px-5 py-8 text-center">
       {!anyConnected && (
-        <p className="mb-2 text-lg font-bold">
-          좋아요 누른 노래, 노래방에선 몇 번일까?
-        </p>
+        <p className="mb-2 text-lg font-bold">{t("connect.headline")}</p>
       )}
-      <p className="text-sm text-muted">
-        {isSpotify ? "Spotify의 좋아요 표시한 곡" : "YouTube·YouTube Music에서 좋아요 누른 영상"}을 불러와 TJ·금영 번호를 찾아 드려요.
-      </p>
+      <p className="text-sm text-muted">{isSpotify ? t("connect.spotifyDesc") : t("connect.youtubeDesc")}</p>
       <div className="mt-5 flex flex-col items-center gap-3">
         {loading ? (
           <span className="h-11 w-48 animate-pulse rounded-full bg-surface-2" aria-hidden />
@@ -689,16 +726,16 @@ function ConnectPrompt({
             onClick={() => void startLogin(provider)}
             className={`rounded-full px-6 py-3 font-semibold text-black hover:brightness-110 ${isSpotify ? "bg-spotify" : "bg-youtube text-white"}`}
           >
-            {name} 연결하기
+            {t("connect.button", { name })}
           </button>
         ) : (
-          <p className="text-sm text-warn">이 사이트에는 아직 {name} 연결 설정이 없어요.</p>
+          <p className="text-sm text-warn">{t("connect.notConfigured", { name })}</p>
         )}
         <button type="button" onClick={onLink} className="text-sm text-muted underline-offset-2 hover:text-ink hover:underline">
-          연결 없이 플레이리스트 링크로 가져오기
+          {t("connect.useLink")}
         </button>
       </div>
-      <p className="mt-5 text-xs text-muted/80">읽기 권한만 요청하고, 로그인 정보는 이 브라우저에만 저장돼요.</p>
+      <p className="mt-5 text-xs text-muted/80">{t("connect.privacy")}</p>
     </div>
   );
 }

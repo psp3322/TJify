@@ -6,9 +6,11 @@ import { resolveNumber, trackKey, type MatchStore, type OverrideStore } from "@/
 import type { SongMeta } from "@/lib/client/song-meta";
 import { clearSung, markSung, setOverride } from "@/lib/client/stores";
 import { describeError } from "@/lib/http";
+import { locale, t as translateNow } from "@/lib/i18n";
+import { useT } from "@/lib/i18n/react";
 import { searchers } from "@/lib/karaoke/providers";
 import { stripDecorations } from "@/lib/text/normalize";
-import { BRAND_LABEL, type Brand, type KaraokeSong, type Track } from "@/lib/types";
+import type { Brand, KaraokeSong, Track } from "@/lib/types";
 import { NumberBadge } from "./NumberBadge";
 import { SongInfoSection } from "./SongInfoSection";
 
@@ -24,10 +26,9 @@ interface Props {
   onClose(): void;
 }
 
-const SOURCE_LABEL = { spotify: "Spotify에서 열기", youtube: "YouTube에서 열기", paste: "" } as const;
-
 /** 곡 상세: 번호 후보 고르기, 직접 검색, 불렀어요 기록 */
 export function TrackSheet({ track, brands, store, overrides, sung, meta, aiEnabled, aiPending, onClose }: Props) {
+  const { t, lang } = useT();
   const dialog = useRef<HTMLDialogElement>(null);
   const key = trackKey(track);
   const history = sung[key] ?? [];
@@ -52,10 +53,12 @@ export function TrackSheet({ track, brands, store, overrides, sung, meta, aiEnab
           <h2 id="sheet-title" className="text-lg font-bold leading-snug">
             {track.title}
           </h2>
-          <p className="text-sm text-muted">{track.artists.join(", ") || "가수 정보 없음"}</p>
-          {track.rawTitle && track.rawTitle !== track.title && <p className="mt-1 truncate text-xs text-muted/70">원래 제목: {track.rawTitle}</p>}
+          <p className="text-sm text-muted">{track.artists.join(", ") || t("list.noArtist")}</p>
+          {track.rawTitle && track.rawTitle !== track.title && (
+            <p className="mt-1 truncate text-xs text-muted/70">{t("sheet.rawTitle", { title: track.rawTitle })}</p>
+          )}
         </div>
-        <button type="button" onClick={() => dialog.current?.close()} className="rounded-full px-2 py-1 text-xl text-muted hover:text-ink" aria-label="닫기">
+        <button type="button" onClick={() => dialog.current?.close()} className="rounded-full px-2 py-1 text-xl text-muted hover:text-ink" aria-label={t("common.close")}>
           ×
         </button>
       </div>
@@ -73,25 +76,28 @@ export function TrackSheet({ track, brands, store, overrides, sung, meta, aiEnab
             onClick={() => markSung(key, Date.now())}
             className="rounded-full bg-accent px-4 py-2 text-sm font-semibold text-black hover:brightness-110"
           >
-            🎤 불렀어요
+            {t("sheet.sung")}
           </button>
           {history.length > 0 && (
             <>
               <span className="text-sm text-muted">
-                {history.length}번 · 마지막 {new Date(history[history.length - 1]).toLocaleDateString("ko-KR", { month: "long", day: "numeric" })}
+                {t("sheet.history", {
+                  n: history.length,
+                  date: new Date(history[history.length - 1]).toLocaleDateString(locale(lang), { month: "long", day: "numeric" }),
+                })}
               </span>
               <button type="button" onClick={() => clearSung(key)} className="text-xs text-muted underline-offset-2 hover:underline">
-                기록 지우기
+                {t("sheet.clearHistory")}
               </button>
             </>
           )}
           <span className="flex-1" />
           <button type="button" onClick={() => matchQueue.rematch(key)} className="text-sm text-muted hover:text-ink">
-            다시 찾기
+            {t("sheet.rematch")}
           </button>
-          {track.url && SOURCE_LABEL[track.source] && (
+          {track.url && track.source !== "paste" && (
             <a href={track.url} target="_blank" rel="noreferrer" className="text-sm text-muted hover:text-ink">
-              {SOURCE_LABEL[track.source]} ↗
+              {t(`sheet.open.${track.source}`)} ↗
             </a>
           )}
         </div>
@@ -113,6 +119,7 @@ function BrandSection({
   store: MatchStore;
   overrides: OverrideStore;
 }) {
+  const { t } = useT();
   const resolved = resolveNumber(trackKeyValue, brand, store, overrides);
   const auto = store[trackKeyValue]?.[brand];
   const isOverridden = Boolean(overrides[trackKeyValue] && brand in overrides[trackKeyValue]);
@@ -130,7 +137,7 @@ function BrandSection({
   };
 
   return (
-    <section aria-label={`${BRAND_LABEL[brand]} 번호`}>
+    <section aria-label={t("brandSection.aria", { brand: t(`brand.${brand}`) })}>
       <div className="flex items-end justify-between gap-3">
         <div>
           <NumberBadge brand={brand} resolved={resolved} size="lg" />
@@ -144,24 +151,24 @@ function BrandSection({
               ))}
             </p>
           )}
-          {resolved.status === "maybe" && <p className="mt-1 text-xs text-warn">제목은 비슷한데 가수가 다를 수 있어요. 아래 후보를 확인해 주세요.</p>}
+          {resolved.status === "maybe" && <p className="mt-1 text-xs text-warn">{t("brandSection.maybe")}</p>}
           {resolved.status === "error" && resolved.error && <p className="mt-1 text-xs text-danger/90">{resolved.error}</p>}
-          {resolved.status === "none" && !isOverridden && <p className="mt-1 text-xs text-muted">자동으로 찾지 못했어요. 아래에서 직접 검색해 보세요.</p>}
+          {resolved.status === "none" && !isOverridden && <p className="mt-1 text-xs text-muted">{t("brandSection.none")}</p>}
         </div>
         <div className="flex shrink-0 gap-2">
           {resolved.song && (
             <button type="button" onClick={copy} className="rounded-lg border border-line px-3 py-1.5 text-sm hover:bg-surface-2">
-              {copied ? "복사됨" : "번호 복사"}
+              {copied ? t("brandSection.copied") : t("brandSection.copy")}
             </button>
           )}
           {isOverridden ? (
             <button type="button" onClick={() => setOverride(trackKeyValue, brand, undefined)} className="rounded-lg border border-line px-3 py-1.5 text-sm hover:bg-surface-2">
-              자동 결과로
+              {t("brandSection.useAuto")}
             </button>
           ) : (
             resolved.status !== "pending" && (
               <button type="button" onClick={() => setOverride(trackKeyValue, brand, null)} className="rounded-lg border border-line px-3 py-1.5 text-sm text-muted hover:bg-surface-2">
-                번호 없음
+                {t("brandSection.noNumber")}
               </button>
             )
           )}
@@ -170,7 +177,7 @@ function BrandSection({
 
       {auto && auto.candidates.length > 0 && (
         <div className="mt-3">
-          <p className="mb-1 text-xs text-muted">후보</p>
+          <p className="mb-1 text-xs text-muted">{t("brandSection.candidates")}</p>
           <SongChoices songs={auto.candidates} selectedNo={resolved.song?.no} onPick={(s) => setOverride(trackKeyValue, brand, s)} />
         </div>
       )}
@@ -207,6 +214,8 @@ function SongChoices({ songs, selectedNo, onPick }: { songs: KaraokeSong[]; sele
 }
 
 function ManualSearch({ brand, initialQuery, onPick }: { brand: Brand; initialQuery: string; onPick(song: KaraokeSong): void }) {
+  const { t } = useT();
+  const brandName = t(`brand.${brand}`);
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState(initialQuery);
   const [type, setType] = useState<"title" | "singer">("title");
@@ -217,7 +226,7 @@ function ManualSearch({ brand, initialQuery, onPick }: { brand: Brand; initialQu
   if (!open) {
     return (
       <button type="button" onClick={() => setOpen(true)} className="mt-3 text-sm text-muted underline-offset-2 hover:text-ink hover:underline">
-        {BRAND_LABEL[brand]}에서 직접 검색
+        {t("manual.open", { brand: brandName })}
       </button>
     );
   }
@@ -232,7 +241,7 @@ function ManualSearch({ brand, initialQuery, onPick }: { brand: Brand; initialQu
       const songs = type === "title" ? await searchers[brand].searchByTitle(q) : await searchers[brand].searchBySinger(q);
       setResults(songs);
     } catch (err) {
-      setError(describeError(err, "노래방 번호 검색"));
+      setError(describeError(err, translateNow("target.karaoke")));
     } finally {
       setLoading(false);
     }
@@ -245,24 +254,24 @@ function ManualSearch({ brand, initialQuery, onPick }: { brand: Brand; initialQu
           value={type}
           onChange={(e) => setType(e.target.value as "title" | "singer")}
           className="rounded-lg border border-line bg-surface-2 px-2 text-sm"
-          aria-label="검색 기준"
+          aria-label={t("manual.by")}
         >
-          <option value="title">곡 제목</option>
-          <option value="singer">가수</option>
+          <option value="title">{t("manual.byTitle")}</option>
+          <option value="singer">{t("manual.bySinger")}</option>
         </select>
         <input
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           className="min-w-0 flex-1 rounded-lg border border-line bg-surface-2 px-3 py-2 text-sm outline-none focus:border-muted"
-          placeholder={`${BRAND_LABEL[brand]} 검색어`}
-          aria-label={`${BRAND_LABEL[brand]} 검색어`}
+          placeholder={t("manual.placeholder", { brand: brandName })}
+          aria-label={t("manual.placeholder", { brand: brandName })}
         />
         <button type="submit" disabled={loading} className="rounded-lg bg-ink px-3 py-2 text-sm font-semibold text-bg disabled:opacity-50">
-          {loading ? "찾는 중" : "검색"}
+          {loading ? t("manual.searching") : t("manual.search")}
         </button>
       </div>
       {error && <p className="text-sm text-danger">{error}</p>}
-      {results && results.length === 0 && <p className="text-sm text-muted">검색 결과가 없어요.</p>}
+      {results && results.length === 0 && <p className="text-sm text-muted">{t("manual.noResults")}</p>}
       {results && results.length > 0 && <SongChoices songs={results.slice(0, 30)} onPick={onPick} />}
     </form>
   );

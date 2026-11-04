@@ -25,7 +25,7 @@ export const STORAGE_KEYS = {
   links: "tjify:links:v1",
   insights: "tjify:insights:v1",
   myDifficulty: "tjify:my-difficulty:v1",
-  chart: "tjify:chart-tj:v2",
+  chart: "tjify:chart-tj:v3",
   settings: "tjify:settings:v1",
   authSpotify: "tjify:auth-spotify:v1",
   authGoogle: "tjify:auth-google:v1",

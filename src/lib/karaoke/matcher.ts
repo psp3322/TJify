@@ -1,4 +1,5 @@
 import { describeError } from "@/lib/http";
+import { t } from "@/lib/i18n";
 import { expandArtists, singerQueries } from "@/lib/text/artists";
 import {
   bestSimilarity,
@@ -157,7 +158,7 @@ export async function matchOnBrand(track: TrackQuery, searcher: KaraokeSearcher)
 
   const result = decide(track, ranked);
   if (succeeded === 0 && firstError) {
-    return { ...result, error: describeError(firstError, "노래방 검색") };
+    return { ...result, error: describeError(firstError, t("target.karaoke")) };
   }
   return result;
 }

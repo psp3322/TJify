@@ -1,7 +1,8 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { describe, expect, it, vi } from "vitest";
-import { DEFAULT_MODEL, describeInsightError, estimateSongs, InsightRefusedError, toInsights, type InsightClient } from "./claude";
+import { DEFAULT_MODEL, describeInsightError, estimateSongs, type InsightClient } from "./claude";
 import { formatViews, popularityScore, singAlongLevel } from "./popularity";
+import { InsightRefusedError, toInsights } from "./prompt";
 
 // 아래 응답은 구조화 출력 스키마 모양대로 만든 테스트용 데이터다 (실제 Claude 답변 아님)
 function fakeClient(parsed: unknown, stopReason = "end_turn") {
@@ -15,7 +16,7 @@ function fakeClient(parsed: unknown, stopReason = "end_turn") {
 type OutputSong = Parameters<typeof toInsights>[1]["songs"][number];
 
 const song = (i: number, extra: Partial<Record<keyof OutputSong, unknown>> = {}): OutputSong =>
-  ({ i, known: true, difficulty: 3, tags: ["고음"], popularity: 4, tip: "", ...extra }) as OutputSong;
+  ({ i, known: true, difficulty: 3, tags: ["고음"], popularity: 4, tip: "", tip_en: "", ...extra }) as OutputSong;
 
 describe("toInsights", () => {
   it("입력 순서대로 맞추고, 모르는 곡·빠진 곡은 null", () => {
@@ -25,11 +26,11 @@ describe("toInsights", () => {
     expect(out[2]).toEqual({ difficulty: 5, tags: ["고음"], popularity: 1 });
   });
 
-  it("꼬리표는 중복을 빼고 3개까지, 팁은 앞뒤 공백을 지운다", () => {
+  it("꼬리표는 중복을 빼고 3개까지, 팁은 한국어·영어 모두 앞뒤 공백을 지운다", () => {
     const [x] = toInsights(1, {
-      songs: [song(0, { tags: ["고음", "고음", "랩", "긴 곡", "빠른 박자"], tip: "  후렴 전에 숨 고르기  " })],
+      songs: [song(0, { tags: ["고음", "고음", "랩", "긴 곡", "빠른 박자"], tip: "  후렴 전에 숨 고르기  ", tip_en: " Breathe before the chorus " })],
     });
-    expect(x).toEqual({ difficulty: 3, tags: ["고음", "랩", "긴 곡"], popularity: 4, tip: "후렴 전에 숨 고르기" });
+    expect(x).toEqual({ difficulty: 3, tags: ["고음", "랩", "긴 곡"], popularity: 4, tip: "후렴 전에 숨 고르기", tipEn: "Breathe before the chorus" });
   });
 });
 
@@ -100,5 +101,11 @@ describe("formatViews", () => {
     expect(formatViews(2_000_000_000)).toBe("20억회");
     expect(formatViews(3_500_000)).toBe("350만회");
     expect(formatViews(950)).toBe("950회");
+  });
+
+  it("영어 화면에서는 M·B로 줄인다", () => {
+    expect(formatViews(150_000_000, "en")).toBe("150M views");
+    expect(formatViews(3_500_000, "en")).toBe("3.5M views");
+    expect(formatViews(950, "en")).toBe("950 views");
   });
 });

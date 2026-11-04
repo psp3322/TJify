@@ -24,7 +24,7 @@ export interface ChartIndex {
   updatedAt: string;
   /** 어디서 받은 차트인지. 둘 다 못 받았으면 "none" (빈 차트) */
   source: "tj" | "manana" | "none";
-  /** TJ 곡번호 → [그 기간 최고 순위, 기간 이름] */
+  /** TJ 곡번호 → [그 기간 최고 순위, 기간] (기간: "2026-09" 같은 달, 또는 Manana 인기곡이면 "recent") */
   songs: Record<string, [number, string]>;
 }
 
@@ -94,8 +94,8 @@ async function fetchTop100(session: ChartSession, start: string, end: string, fe
 
 const pad = (n: number) => String(n).padStart(2, "0");
 
-/** 최근 months개월을 한 달씩 나눈 기간 (한국 시간 기준, 이번 달은 오늘까지) */
-export function monthWindows(now: Date, months = 12): Array<{ start: string; end: string; label: string }> {
+/** 최근 months개월을 한 달씩 나눈 기간 (한국 시간 기준, 이번 달은 오늘까지). period는 "2026-09" 모양 */
+export function monthWindows(now: Date, months = 12): Array<{ start: string; end: string; period: string }> {
   const kst = new Date(now.getTime() + 9 * 60 * 60 * 1000);
   const y = kst.getUTCFullYear();
   const m = kst.getUTCMonth();
@@ -108,7 +108,7 @@ export function monthWindows(now: Date, months = 12): Array<{ start: string; end
     windows.push({
       start: `${fy}-${pad(fm)}-01`,
       end: `${last.getUTCFullYear()}-${pad(last.getUTCMonth() + 1)}-${pad(last.getUTCDate())}`,
-      label: `${fy}년 ${fm}월`,
+      period: `${fy}-${pad(fm)}`,
     });
   }
   return windows;
@@ -126,7 +126,7 @@ export async function buildTjChartIndex(now = new Date(), fetchImpl: typeof fetc
     try {
       for (const e of await fetchTop100(session, w.start, w.end, fetchImpl)) {
         const prev = songs[e.no];
-        if (!prev || e.rank < prev[0]) songs[e.no] = [e.rank, w.label];
+        if (!prev || e.rank < prev[0]) songs[e.no] = [e.rank, w.period];
       }
       succeeded++;
     } catch (error) {
@@ -153,7 +153,7 @@ export async function buildChartIndex(now = new Date(), fetchImpl: typeof fetch 
     const entries = await fetchMananaPopular("tj", "monthly", { fetchImpl, headers: { "User-Agent": userAgent() } });
     if (entries.length > 0) {
       const songs: Record<string, [number, string]> = {};
-      for (const e of entries) if (!songs[e.no] || e.rank < songs[e.no][0]) songs[e.no] = [e.rank, "최근 한 달"];
+      for (const e of entries) if (!songs[e.no] || e.rank < songs[e.no][0]) songs[e.no] = [e.rank, "recent"];
       return { updatedAt: now.toISOString(), source: "manana", songs };
     }
   } catch (error) {

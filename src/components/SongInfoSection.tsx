@@ -2,8 +2,11 @@
 
 import type { SongMeta } from "@/lib/client/song-meta";
 import { setMyDifficulty } from "@/lib/client/stores";
+import { useT } from "@/lib/i18n/react";
 import { formatViews } from "@/lib/insights/popularity";
-import { DIFFICULTY_LABEL, SING_ALONG_LABEL } from "@/lib/insights/types";
+import { difficultyKey, singAlongKey, tagLabel } from "@/lib/insights/types";
+import { formatChartPeriod } from "@/lib/karaoke/chart-period";
+import { RichText } from "./RichText";
 
 interface Props {
   trackKeyValue: string;
@@ -13,38 +16,52 @@ interface Props {
 }
 
 const LEVELS = [1, 2, 3, 4, 5];
+const ENGINE_NAME = { claude: "Claude", gemini: "Gemini" } as const;
 
 /** 곡 상세의 난이도·대중성 영역 */
 export function SongInfoSection({ trackKeyValue, meta, aiEnabled, aiPending }: Props) {
+  const { t, lang } = useT();
+  const engine = meta.aiBy ? ENGINE_NAME[meta.aiBy] : t("engine.ai");
+  const tip = lang === "en" ? (meta.tipEn ?? meta.tip) : (meta.tip ?? meta.tipEn);
+
   return (
-    <section aria-label="난이도와 대중성" className="space-y-4 rounded-xl border border-line bg-surface-2/40 p-4">
+    <section aria-label={t("info.aria")} className="space-y-4 rounded-xl border border-line bg-surface-2/40 p-4">
       <div className="space-y-2">
         <div className="flex items-baseline justify-between gap-2">
-          <h3 className="text-sm font-semibold">난이도</h3>
+          <h3 className="text-sm font-semibold">{t("info.difficulty")}</h3>
           {meta.difficulty !== null && (
             <span className="text-sm">
-              {DIFFICULTY_LABEL[meta.difficulty]}
-              <span className="ml-1 text-xs text-muted">{meta.difficultyIsMine ? "내 평가" : "Claude 추정"}</span>
+              {t(difficultyKey(meta.difficulty))}
+              <span className="ml-1 text-xs text-muted">{meta.difficultyIsMine ? t("info.mine") : t("info.estimate", { engine })}</span>
             </span>
           )}
         </div>
         {meta.aiDifficulty !== null && (
           <p className="text-xs text-muted">
-            Claude 추정: {DIFFICULTY_LABEL[meta.aiDifficulty]}
-            {meta.tags.length > 0 && ` · ${meta.tags.join(", ")}`}
+            {t("info.estimateLine", { engine, label: t(difficultyKey(meta.aiDifficulty)) })}
+            {meta.tags.length > 0 && ` · ${meta.tags.map((tag) => tagLabel(tag, lang)).join(", ")}`}
           </p>
         )}
-        {meta.tip && <p className="text-xs text-muted">팁: {meta.tip}</p>}
+        {tip && <p className="text-xs text-muted">{t("info.tip", { tip })}</p>}
         {meta.aiDifficulty === null && (
           <p className="text-xs text-muted">
-            {!aiEnabled
-              ? "자동 난이도는 꺼져 있어요. 사이트 아래 설정에 Anthropic API 키를 넣으면 Claude가 추정해 줘요. 불러 보고 직접 매겨 둘 수도 있어요."
-              : aiPending
-                ? "난이도를 추정하는 중이에요…"
-                : "Claude도 잘 모르는 곡이에요. 직접 매겨 두세요."}
+            {!aiEnabled ? (
+              <RichText
+                text={t("info.aiOff")}
+                link={(label) => (
+                  <a href="#settings" className="underline underline-offset-2 hover:text-ink">
+                    {label}
+                  </a>
+                )}
+              />
+            ) : aiPending ? (
+              t("info.aiPending")
+            ) : (
+              t("info.aiUnknown")
+            )}
           </p>
         )}
-        <div className="flex flex-wrap gap-1.5" role="group" aria-label="내 난이도 평가">
+        <div className="flex flex-wrap gap-1.5" role="group" aria-label={t("info.rateAria")}>
           {LEVELS.map((level) => {
             const active = meta.difficultyIsMine && meta.difficulty === level;
             return (
@@ -55,7 +72,7 @@ export function SongInfoSection({ trackKeyValue, meta, aiEnabled, aiPending }: P
                 onClick={() => setMyDifficulty(trackKeyValue, active ? undefined : level)}
                 className={`rounded-full border px-2.5 py-1 text-xs ${active ? "border-ink bg-ink text-bg" : "border-line text-muted hover:text-ink"}`}
               >
-                {DIFFICULTY_LABEL[level]}
+                {t(difficultyKey(level))}
               </button>
             );
           })}
@@ -64,18 +81,14 @@ export function SongInfoSection({ trackKeyValue, meta, aiEnabled, aiPending }: P
 
       <div className="space-y-1.5 border-t border-line pt-3">
         <div className="flex items-baseline justify-between gap-2">
-          <h3 className="text-sm font-semibold">다른 사람도 따라 부를 수 있을까?</h3>
-          {meta.singAlong && <span className="text-sm text-accent">{SING_ALONG_LABEL[meta.singAlong].long}</span>}
+          <h3 className="text-sm font-semibold">{t("info.singAlongTitle")}</h3>
+          {meta.singAlong && <span className="text-sm text-accent">{t(singAlongKey(meta.singAlong, true))}</span>}
         </div>
         <ul className="space-y-0.5 text-xs text-muted">
-          {meta.chart && (
-            <li>
-              TJ 노래방 인기차트 TOP100 · 최고 {meta.chart[0]}위 ({meta.chart[1]})
-            </li>
-          )}
-          {meta.aiPopularity !== null && <li>Claude 추정 대중성: {meta.aiPopularity}/5</li>}
-          {meta.views !== undefined && <li>YouTube 조회수 {formatViews(meta.views)}</li>}
-          {!meta.chart && meta.aiPopularity === null && meta.views === undefined && <li>아직 판단할 정보가 없어요.</li>}
+          {meta.chart && <li>{t("info.chart", { rank: meta.chart[0], period: formatChartPeriod(meta.chart[1], lang) })}</li>}
+          {meta.aiPopularity !== null && <li>{t("info.aiPopularity", { engine, n: meta.aiPopularity })}</li>}
+          {meta.views !== undefined && <li>{t("info.views", { views: formatViews(meta.views, lang) })}</li>}
+          {!meta.chart && meta.aiPopularity === null && meta.views === undefined && <li>{t("info.noSignals")}</li>}
         </ul>
       </div>
     </section>

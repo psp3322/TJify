@@ -21,9 +21,9 @@ describe("monthWindows", () => {
     // 2026-10-31 23:00 UTC = 2026-11-01 08:00 KST
     const w = monthWindows(new Date(Date.UTC(2026, 9, 31, 23)), 3);
     expect(w).toEqual([
-      { start: "2026-11-01", end: "2026-11-01", label: "2026년 11월" },
-      { start: "2026-10-01", end: "2026-10-31", label: "2026년 10월" },
-      { start: "2026-09-01", end: "2026-09-30", label: "2026년 9월" },
+      { start: "2026-11-01", end: "2026-11-01", period: "2026-11" },
+      { start: "2026-10-01", end: "2026-10-31", period: "2026-10" },
+      { start: "2026-09-01", end: "2026-09-30", period: "2026-09" },
     ]);
   });
 });
@@ -53,7 +53,7 @@ describe("buildTjChartIndex", () => {
     await vi.runAllTimersAsync();
     const index = await pending;
     vi.useRealTimers();
-    expect(index.songs).toEqual({ "111": [2, "2026년 9월"], "222": [9, "2026년 9월"] });
+    expect(index.songs).toEqual({ "111": [2, "2026-09"], "222": [9, "2026-09"] });
     expect(index.source).toBe("tj");
   });
 });
@@ -65,7 +65,7 @@ describe("buildChartIndex", () => {
       String(url).includes("manana") ? Response.json([{ brand: "tj", no: "777", title: "곡", singer: "가수" }]) : new Response("", { status: 403 }),
     );
     const viaManana = await buildChartIndex(new Date(Date.UTC(2026, 9, 15)), tjDown);
-    expect(viaManana).toMatchObject({ source: "manana", songs: { "777": [1, "최근 한 달"] } });
+    expect(viaManana).toMatchObject({ source: "manana", songs: { "777": [1, "recent"] } });
 
     const allDown = vi.fn<typeof fetch>(async () => new Response("", { status: 403 }));
     await expect(buildChartIndex(new Date(Date.UTC(2026, 9, 15)), allDown)).resolves.toMatchObject({ source: "none", songs: {} });

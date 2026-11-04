@@ -1,5 +1,6 @@
 import { AuthExpiredError } from "@/lib/auth/errors";
 import { UpstreamError } from "@/lib/http";
+import { t } from "@/lib/i18n";
 import type { PlaylistSummary, Track, TrackPage } from "@/lib/types";
 
 /*
@@ -80,15 +81,12 @@ async function spotifyGet<T>(token: string, path: string, params: Record<string,
   });
   if (res.status === 401) throw new AuthExpiredError();
   if (res.status === 403) {
-    throw new UpstreamError(
-      "Spotify가 요청을 거부했습니다. 개발 모드 앱이라면 대시보드 User Management에 이 계정이 등록돼 있는지, 앱 소유자 계정이 Premium인지 확인하세요.",
-      403,
-    );
+    throw new UpstreamError(t("error.spotifyForbidden"), 403);
   }
   if (res.status === 429) {
-    throw new UpstreamError(`Spotify 요청 한도 초과. ${res.headers.get("retry-after") ?? "잠시"}초 뒤 다시 시도하세요.`, 429);
+    throw new UpstreamError(t("error.spotifyRateLimit", { seconds: res.headers.get("retry-after") ?? "30" }), 429);
   }
-  if (!res.ok) throw new UpstreamError(`Spotify API 오류 (HTTP ${res.status})`, res.status);
+  if (!res.ok) throw new UpstreamError(t("error.spotifyHttp", { status: res.status }), res.status);
   return (await res.json()) as T;
 }
 
@@ -124,7 +122,7 @@ export async function fetchPlaylists(token: string): Promise<PlaylistSummary[]> 
       if (!p?.id) continue;
       out.push({
         id: p.id,
-        name: p.name ?? "(이름 없음)",
+        name: p.name ?? t("common.untitled"),
         imageUrl: pickImage(p.images),
         trackCount: p.items?.total ?? p.tracks?.total,
         owner: p.owner?.display_name ?? undefined,

@@ -36,6 +36,7 @@ jobs:
           NEXT_PUBLIC_BASE_PATH: ${{ steps.pages.outputs.base_path }}
           # 모두 선택. 저장소 Settings → Secrets and variables → Actions → Variables 에 넣으면 켜진다 (사이트 JS에 그대로 들어가는 공개 값)
           NEXT_PUBLIC_YOUTUBE_API_KEY: ${{ vars.YOUTUBE_API_KEY }}
+          NEXT_PUBLIC_GEMINI_API_KEY: ${{ vars.GEMINI_API_KEY }}
           NEXT_PUBLIC_SPOTIFY_CLIENT_ID: ${{ vars.SPOTIFY_CLIENT_ID }}
           NEXT_PUBLIC_GOOGLE_CLIENT_ID: ${{ vars.GOOGLE_CLIENT_ID }}
       - uses: actions/upload-pages-artifact@v5

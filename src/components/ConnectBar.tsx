@@ -1,6 +1,7 @@
 "use client";
 
 import { startLogin } from "@/lib/client/auth";
+import { useT } from "@/lib/i18n/react";
 import type { ProviderStatus, SiteStatus } from "@/lib/types";
 
 interface Props {
@@ -35,6 +36,7 @@ function ConnectChip({
   status?: ProviderStatus;
   onDisconnect(provider: "spotify" | "google"): void;
 }) {
+  const { t } = useT();
   if (!status) {
     return <span className="h-9 w-36 animate-pulse rounded-full bg-surface" aria-hidden />;
   }
@@ -51,7 +53,7 @@ function ConnectChip({
           onClick={() => onDisconnect(provider)}
           className="rounded-full px-2 py-0.5 text-xs text-muted hover:bg-surface-2 hover:text-ink"
         >
-          해제
+          {t("connectBar.disconnect")}
         </button>
       </span>
     );
@@ -64,7 +66,7 @@ function ConnectChip({
       className="flex items-center gap-2 rounded-full border border-line bg-surface px-3 py-1.5 text-sm hover:bg-surface-2"
     >
       <span className={`size-2 rounded-full ${dot} opacity-50`} aria-hidden />
-      {label} 연결
+      {t("connectBar.connect", { name: label })}
     </button>
   );
 }

@@ -1,3 +1,5 @@
+import type { MessageKey } from "@/lib/i18n";
+
 export type LinkSource = "spotify" | "youtube";
 
 export interface PlaylistLink {
@@ -5,7 +7,7 @@ export interface PlaylistLink {
   id: string;
 }
 
-export type ParsedLink = PlaylistLink | { error: "spotify_short_link" | "youtube_no_list" | "unsupported" };
+export type ParsedLink = PlaylistLink | { error: LinkErrorCode };
 
 const YOUTUBE_HOSTS = new Set(["youtube.com", "www.youtube.com", "m.youtube.com", "music.youtube.com", "youtu.be"]);
 const SPOTIFY_ID = /^[A-Za-z0-9]{10,40}$/;
@@ -54,10 +56,12 @@ export function parsePlaylistLink(input: string): ParsedLink | null {
   return { error: "unsupported" };
 }
 
-export const LINK_ERRORS: Record<"spotify_short_link" | "youtube_no_list" | "unsupported", string> = {
-  spotify_short_link: "spotify.link 짧은 주소는 바로 읽을 수 없어요. 브라우저에서 한 번 열고, 주소창에 나오는 open.spotify.com 주소를 넣어 주세요.",
-  youtube_no_list: "영상 하나의 주소예요. 재생목록 화면에서 공유한 주소(list=가 들어간 주소)를 넣어 주세요.",
-  unsupported: "Spotify 플레이리스트나 YouTube·YouTube Music 재생목록 주소를 넣어 주세요.",
+export type LinkErrorCode = "spotify_short_link" | "youtube_no_list" | "unsupported";
+
+export const LINK_ERROR_KEYS: Record<LinkErrorCode, MessageKey> = {
+  spotify_short_link: "link.error.spotify_short_link",
+  youtube_no_list: "link.error.youtube_no_list",
+  unsupported: "link.error.unsupported",
 };
 
 export function isPlaylistLink(parsed: ParsedLink | null): parsed is PlaylistLink {

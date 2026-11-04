@@ -1,5 +1,13 @@
-/** 사이트 하단 소개. README에 적던 설명을 방문자가 사이트 안에서 바로 읽을 수 있게 옮겼다 */
+"use client";
+
+import { useLang } from "@/lib/i18n/react";
+
+/** 사이트 하단 소개. README에 적던 설명을 방문자가 사이트 안에서 바로 읽을 수 있게 옮겼다 (한국어·영어) */
 export function AboutSection({ aiEnabled }: { aiEnabled: boolean }) {
+  return useLang() === "en" ? <AboutEn aiEnabled={aiEnabled} /> : <AboutKo aiEnabled={aiEnabled} />;
+}
+
+function AboutKo({ aiEnabled }: { aiEnabled: boolean }) {
   return (
     <section aria-labelledby="about-title" className="mt-auto space-y-2 border-t border-line pt-6">
       <h2 id="about-title" className="text-sm font-semibold">
@@ -26,7 +34,7 @@ export function AboutSection({ aiEnabled }: { aiEnabled: boolean }) {
         <Item title="번호는 어디서 가져오나요?">
           <p>
             TJ·금영 번호 모두 여러 노래방 번호 앱이 쓰는 공개 API(Manana)에서 찾아요. 제목 표기가 달라도 찾을 수 있게 띄어쓰기·괄호를 무시하고, &quot;IU&quot;와
-            &quot;아이유&quot;처럼 영어·한글 가수 이름을 이어서 비교해요. 확실하지 않은 번호에는 <b>?</b>가 붙고, 곡을 눌러 노래방 사이트에서 직접 찾아볼 수도 있어요.
+            &quot;아이유&quot;처럼 영어·한글 가수 이름을 이어서 비교해요. 확실하지 않은 번호에는 <b>?</b>가 붙고, 곡을 눌러 직접 찾아볼 수도 있어요.
           </p>
         </Item>
 
@@ -34,12 +42,12 @@ export function AboutSection({ aiEnabled }: { aiEnabled: boolean }) {
           <ul className="list-disc space-y-1 pl-5">
             <li>
               <b>난이도</b>는 노래를 따로 배우지 않은 사람이 노래방에서 부를 때 기준으로 아주 쉬움~아주 어려움 다섯 단계예요.{" "}
-              {aiEnabled ? "Claude가 곡을 보고 추정해요." : "설정에 Anthropic API 키를 넣으면 Claude가 곡을 보고 추정해요."} 직접 불러 보고 매긴 난이도가 있으면
-              그걸 먼저 보여 줘요.
+              {aiEnabled ? "AI(Gemini나 Claude)가 곡을 보고 추정해요." : "설정에 무료 Gemini API 키를 넣으면 AI가 곡을 보고 추정해요."} 직접 불러 보고 매긴
+              난이도가 있으면 그걸 먼저 보여 줘요.
             </li>
             <li>
               <b>다 같이</b>는 같이 간 사람들도 따라 부를 수 있을 만큼 알려진 곡이라는 뜻이에요. TJ 노래방 인기차트 TOP100(최근 1년, 매주 새로 받아요)에 든 곡,
-              YouTube 조회수가 많은 곡{aiEnabled ? ", Claude가 '대부분 아는 곡'으로 본 곡" : ""}이 여기에 들어가요.
+              YouTube 조회수가 많은 곡{aiEnabled ? ", AI가 '대부분 아는 곡'으로 본 곡" : ""}이 여기에 들어가요.
             </li>
             <li>추정이라 틀릴 수 있어요. 특히 덜 알려진 곡은 &quot;모름&quot;으로 남겨 둬요.</li>
           </ul>
@@ -58,8 +66,80 @@ export function AboutSection({ aiEnabled }: { aiEnabled: boolean }) {
 
         <Item title="개인정보는요?">
           <p>
-            이 사이트는 서버 없이 GitHub Pages에서 돌아가요. 노래방 번호 검색, YouTube·Spotify, Claude 요청은 모두 이 브라우저에서 해당 서비스로 바로 가고, 찾은
-            번호·부른 기록·로그인 정보·API 키는 이 브라우저에만 저장돼요. 로그인은 읽기 권한만 요청하고, 난이도를 추정할 때는 곡 제목과 가수 이름만 Claude에 보내요.
+            이 사이트는 서버 없이 GitHub Pages에서 돌아가요. 노래방 번호 검색, YouTube·Spotify, AI 요청은 모두 이 브라우저에서 해당 서비스로 바로 가고, 찾은 번호·부른
+            기록·로그인 정보·API 키는 이 브라우저에만 저장돼요. 로그인은 읽기 권한만 요청하고, 난이도를 추정할 때는 곡 제목과 가수 이름만 AI에 보내요. Gemini 무료
+            등급에서는 보낸 곡 제목·가수가 Google 서비스 개선에 쓰일 수 있어요.
+          </p>
+        </Item>
+      </div>
+    </section>
+  );
+}
+
+function AboutEn({ aiEnabled }: { aiEnabled: boolean }) {
+  return (
+    <section aria-labelledby="about-title" className="mt-auto space-y-2 border-t border-line pt-6">
+      <h2 id="about-title" className="text-sm font-semibold">
+        About TJify
+      </h2>
+      <p className="text-sm text-muted">
+        I made this because I kept singing the same songs at karaoke. Add a playlist you already listen to, and for each song it finds the TJ and KY (Kumyoung) karaoke
+        numbers, how hard it is to sing, and whether the people you&apos;re with will know it.
+      </p>
+
+      <div className="divide-y divide-line/60 rounded-xl border border-line text-sm">
+        <Item title="How do I use it?">
+          <ol className="list-decimal space-y-1 pl-5">
+            <li>
+              Paste a YouTube / YouTube Music playlist or a Spotify playlist link into <b>Import a link</b>.
+            </li>
+            <li>Numbers and difficulty fill in song by song. Results stay in this browser, so they show up instantly next time.</li>
+            <li>Tap a song to pick another candidate number or search yourself, and mark songs you sang with “I sang this”.</li>
+            <li>“What should I sing?” picks a song you haven&apos;t sung in the last 2 weeks.</li>
+          </ol>
+          <p className="mt-2">No link? Paste “Artist - Title” one per line.</p>
+        </Item>
+
+        <Item title="Where do the numbers come from?">
+          <p>
+            Both TJ and KY numbers come from Manana, a public karaoke API that many karaoke number apps use. Spacing and brackets are ignored so different spellings still
+            match, and English and Korean artist names (like &quot;IU&quot; and &quot;아이유&quot;) are treated as the same. Numbers that aren&apos;t certain get a{" "}
+            <b>?</b>, and you can tap a song to search yourself.
+          </p>
+          <p className="mt-2">Karaoke song titles are stored the way Korean karaoke machines list them, so Korean songs are usually listed by their Korean titles.</p>
+        </Item>
+
+        <Item title="What do difficulty and “Sing-along” mean?">
+          <ul className="list-disc space-y-1 pl-5">
+            <li>
+              <b>Difficulty</b> has five levels, from very easy to very hard, for someone without vocal training singing at karaoke.{" "}
+              {aiEnabled ? "An AI (Gemini or Claude) estimates it." : "Add a free Gemini API key in settings and an AI will estimate it."} Your own rating, if you set
+              one, comes first.
+            </li>
+            <li>
+              <b>Sing-along</b> means the song is well known enough that others can sing along: songs in the TJ karaoke TOP 100 chart (past year, refreshed weekly),
+              songs with lots of YouTube views{aiEnabled ? ", and songs the AI rates as widely known" : ""}.
+            </li>
+            <li>These are estimates and can be wrong. Lesser-known songs are left as unknown.</li>
+          </ul>
+        </Item>
+
+        <Item title="Which links work?">
+          <ul className="list-disc space-y-1 pl-5">
+            <li>YouTube / YouTube Music: public or unlisted playlists load without signing in (when a YouTube API key is set). Auto-generated mixes don&apos;t work.</li>
+            <li>
+              Spotify: since Spotify&apos;s February 2026 policy change, only playlists created by, or shared for collaboration with, the connected account can be read.
+              Other people&apos;s playlists and Spotify-made playlists are blocked.
+            </li>
+            <li>Send the page address to a friend and the same list opens for them (YouTube playlists).</li>
+          </ul>
+        </Item>
+
+        <Item title="What about privacy?">
+          <p>
+            This site runs on GitHub Pages with no server. Karaoke lookups and YouTube, Spotify and AI requests go straight from this browser to those services, and your
+            numbers, singing history, sign-ins and API keys are stored only in this browser. Sign-in asks for read access only, and only song titles and artists are sent
+            to the AI. On Gemini&apos;s free tier, the titles and artists you send may be used to improve Google&apos;s products.
           </p>
         </Item>
       </div>

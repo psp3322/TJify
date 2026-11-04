@@ -4,6 +4,7 @@ import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
 import { resolveNumber, trackKey, type MatchStore, type OverrideStore } from "@/lib/client/match-store";
 import type { SongMeta } from "@/lib/client/song-meta";
+import { useT } from "@/lib/i18n/react";
 import type { Brand, Track } from "@/lib/types";
 import { NumberBadge } from "./NumberBadge";
 import { SongBadges } from "./SongBadges";
@@ -22,6 +23,7 @@ interface Props {
 
 /** 곡 목록. 길면 스크롤할 때마다 PAGE개씩 더 그린다 */
 export function TrackList({ tracks, brands, store, overrides, sung, meta, onSelect }: Props) {
+  const { t } = useT();
   const [limit, setLimit] = useState(PAGE);
   const sentinel = useRef<HTMLLIElement>(null);
   const hasMore = tracks.length > limit;
@@ -58,7 +60,7 @@ export function TrackList({ tracks, brands, store, overrides, sung, meta, onSele
               <span className="min-w-0 flex-1">
                 <span className="block truncate font-medium">{track.title}</span>
                 <span className="block truncate text-sm text-muted">
-                  {track.artists.join(", ") || "가수 정보 없음"}
+                  {track.artists.join(", ") || t("list.noArtist")}
                   {sungCount > 0 && <span className="ml-1.5 text-xs text-accent">🎤 {sungCount}</span>}
                 </span>
                 {info && <SongBadges meta={info} />}
@@ -74,7 +76,7 @@ export function TrackList({ tracks, brands, store, overrides, sung, meta, onSele
       })}
       {hasMore && (
         <li ref={sentinel} className="py-4 text-center text-sm text-muted">
-          더 불러오는 중…
+          {t("list.more")}
         </li>
       )}
     </ul>
